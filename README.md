@@ -232,9 +232,22 @@ Department of Geography, University of the Aegean.
 ## Author
 
 **Nikolaos Koroniadis**  
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Nick_Koroniadis-0A66C2?logo=linkedin)](https://www.linkedin.com/in/nick-koroniadis-328962226)  
 MSc Geography and Applied Geoinformatics  
 University of the Aegean  
-[Remote Sensing & GIS Research Group](https://rsgis.aegean.gr/)
+
+**Thesis Supervisor:** Dr. Christos Vasilakos  
+
+- [MSc Geography and Applied Geoinformatics](https://geography.aegean.gr/geoinformatics/)  
+- [Remote Sensing & GIS Research Group (RSGIS)](https://rsgis.aegean.gr/)  
+- [Department of Geography, University of the Aegean](https://geography.aegean.gr/)
+
+## Acknowledgments
+
+- **Dr. Christos Vasilakos** — thesis supervision and guidance throughout the research
+- **[Anthropic Claude](https://claude.ai)** — AI-assisted development: code architecture design, bug detection, documentation, and interactive visualizations
+- **[ESRI](https://www.esri.com)** — ArcGIS Pro platform and geoprocessing framework
+- **University of the Aegean, RSGIS Lab** — research infrastructure and drone data collection support
 
 ---
 
