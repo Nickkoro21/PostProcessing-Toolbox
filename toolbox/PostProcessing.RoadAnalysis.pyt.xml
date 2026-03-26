@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata xml:lang="en">
+	<Esri>
+		<CreaDate>20260323</CreaDate>
+		<CreaTime>120000</CreaTime>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<ArcGISProfile>ItemDescription</ArcGISProfile>
+	</Esri>
+	<tool name="RoadAnalysis" displayname="4. Road Analysis" toolboxalias="PostProc">
+		<summary>Road network post-processing for semantic segmentation outputs (DeepLabV3 + PointRend, ResNet-101 backbone). Extracts road pixels from a single-band classified raster, applies morphological filtering (Majority Filter), vectorizes to polygons, simplifies boundaries (POINT_REMOVE) and dissolves adjacent segments into contiguous road features, computes geometry and Minimum Bounding Rectangle (MBR) attributes, enriches with nDSM height and thermal statistics, and classifies features as Road or Rejected possible road based on area, nDSM ceiling, MBR length, and MBR width thresholds. Optionally extracts polyline centerlines using a Voronoi medial axis algorithm (preferred) or morphological Thin (fallback). Produces a single output shapefile with accepted and rejected features, optional centerline polylines, optional centroid points, and a JSON run log.
+
+Requires Spatial Analyst and 3D Analyst extensions.
+
+PIPELINE (9 phases): Extract binary &gt; Majority Filter &gt; Vectorize &gt; Simplify + Dissolve &gt; Geometry and MBR &gt; Enrichment (nDSM + Thermal) &gt; Classification &gt; Centerline Extraction (optional) &gt; Export.
+
+Roads differ from discrete objects (vehicles, buildings, trees) in that they are linear network features. Adjacent road polygons are dissolved into contiguous segments before classification. The nDSM threshold is inverted compared to buildings and trees: roads must be ground-level (nDSM below a ceiling), not elevated.
+
+CENTERLINE METHODS:
+- Voronoi medial axis (primary): Densifies the polygon boundary, computes the Voronoi diagram (scipy), retains only interior edges, builds a networkx graph, and iteratively prunes short terminal branches. Handles junctions, bends, and variable widths natively. Requires shapely, scipy, networkx, numpy.
+- Morphological Thin (fallback): Rasterize &gt; Thin &gt; RasterToPolyline &gt; Clip &gt; TrimLine. Used when Voronoi dependencies are not available. Lower quality with possible spurs.
+
+INPUTS: Classified Raster (single-band, integer), Road Class Value (from raster unique values), nDSM Raster (m), Thermal Raster (deg C, optional), Area of Interest (optional), Output CRS (optional).
+
+OUTPUTS: road_results.shp (single layer with Class + Reason fields), road_centerlines.shp (polylines, optional), road_points.shp (centroids, optional), road_log.json.
+
+FIELDS (polygons): RoadID, Area_m2, Perim_m, MBR_W, MBR_L, MBR_Azim, LW_Ratio, Compact, MEAN_nDSM, MEAN_Therm (if thermal provided), Class, Reason.
+FIELDS (centerlines): RoadID, Area_m2, Perim_m, MBR_W, MBR_L, MBR_Azim, LW_Ratio, Compact, MEAN_nDSM, MEAN_Therm, Class, Reason, CL_Len_m.
+
+Part of the PostProcessing Toolbox (modular architecture: PostProcessing.pyt + _postproc_common.py + _road_core.py).
+
+Developed by Nikolaos Koroniadis, MSc thesis, Geography and Applied Geoinformatics, University of the Aegean (https://geography.aegean.gr/geoinformatics/). Remote Sensing and GIS Research Group (https://rsgis.aegean.gr/).</summary>
+		<usage>Run from ArcGIS Pro Catalog: PostProcessing.pyt &gt; Road &gt; 4. Road Analysis. Select the classified raster, pick the road class value from the dropdown, provide an nDSM raster, and choose an output folder. The tool creates a roads subfolder with results. Optionally provide thermal data, an AOI mask, and a different output coordinate system. Enable Generate Centerline Polylines to extract the road network as polylines (Voronoi medial axis method). Review the road_log.json for full run parameters and statistics.</usage>
+		<parameters>
+			<param name="in_classified" displayname="Classified Raster" type="Required" direction="Input" datatype="GPRasterLayer" expression="in_classified">
+				<dialogReference>Single-band classified raster with integer pixel values representing land cover classes. Each unique value is a different class. The tool extracts pixels matching the Road Class Value parameter. Must have at least 2 unique class values.</dialogReference>
+			</param>
+			<param name="road_class" displayname="Road Class Value" type="Required" direction="Input" datatype="GPLong" expression="road_class">
+				<dialogReference>The pixel value in the classified raster that represents roads. When you select a classified raster, the unique class values found in the raster are listed as choices. Pick the value that corresponds to roads.</dialogReference>
+			</param>
+			<param name="in_ndsm" displayname="nDSM Raster (m)" type="Required" direction="Input" datatype="GPRasterLayer" expression="in_ndsm">
+				<dialogReference>Normalized Digital Surface Model, heights above ground in meters. Used for mean height per feature via Zonal Statistics. Roads are ground-level features: accepted road segments must have mean nDSM below the Maximum nDSM Height threshold. Typical road nDSM: 0.0-0.3 m.</dialogReference>
+			</param>
+			<param name="in_thermal" displayname="Thermal Raster (deg C)" type="Optional" direction="Input" datatype="GPRasterLayer" expression="in_thermal">
+				<dialogReference>Single-band thermal raster in degrees Celsius (Altum-PT LWIR). If provided, MEAN_Therm is computed per feature via Zonal Statistics. Asphalt roads typically show higher thermal signatures than surrounding vegetation.</dialogReference>
+			</param>
+			<param name="in_aoi" displayname="Area of Interest" type="Optional" direction="Input" datatype="Multiple" expression="in_aoi">
+				<dialogReference>Polygon or raster mask to clip the study area. If not set, the intersection of classified and nDSM extents is used.</dialogReference>
+			</param>
+			<param name="out_crs" displayname="Output Coordinate System" type="Optional" direction="Input" datatype="GPCoordinateSystem" expression="out_crs">
+				<dialogReference>Coordinate reference system for all output shapefiles. Select from the globe icon or type an EPSG code (e.g. 2100 for EGSA87 / Greek Grid). Default: same as the classified raster. The CRS is applied only at the export phase to avoid raster reprojection issues during processing.</dialogReference>
+			</param>
+			<param name="cell_size_option" displayname="Processing Cell Size" type="Required" direction="Input" datatype="GPString" expression="cell_size_option">
+				<dialogReference>Cell size for raster processing. Classified raster cell size (default, recommended) preserves full detail (~4.5 cm for Altum-PT). Maximum of inputs uses the coarsest resolution. Custom allows a user-defined value in meters.</dialogReference>
+			</param>
+			<param name="cell_size_custom" displayname="Custom Cell Size (m)" type="Optional" direction="Input" datatype="GPDouble" expression="cell_size_custom">
+				<dialogReference>User-defined cell size in meters. Only active when Processing Cell Size is set to Custom.</dialogReference>
+			</param>
+			<param name="min_area" displayname="Minimum Road Segment Area (m2)" type="Required" direction="Input" datatype="GPDouble" expression="min_area">
+				<dialogReference>Road segments smaller than this area (m2) are classified as Rejected possible road with Reason = Area_below_min. Removes noise and small misclassified patches. After dissolve, road segments are typically much larger than this threshold. Default: 2.0.</dialogReference>
+			</param>
+			<param name="max_ndsm" displayname="Maximum nDSM Height (m)" type="Required" direction="Input" datatype="GPDouble" expression="max_ndsm">
+				<dialogReference>Maximum mean nDSM height for accepted roads. Features with mean nDSM above this value are classified as Rejected possible road with Reason = nDSM_above_max. Roads are ground-level: typical nDSM is 0.0-0.3 m. Elevated features (bridges, overpasses, misclassified buildings) are rejected. Default: 0.5.</dialogReference>
+			</param>
+			<param name="reject_null_ndsm" displayname="Reject Features with NULL nDSM" type="Required" direction="Input" datatype="GPBoolean" expression="reject_null_ndsm">
+				<dialogReference>If checked (default), features with no nDSM data (NULL) are classified as Rejected possible road with Reason = nDSM_null. If unchecked, they are kept as Road with Reason = nDSM_null_kept and a warning is logged. NULL nDSM occurs when a road segment falls outside the nDSM raster extent or on NoData pixels.</dialogReference>
+			</param>
+			<param name="majority_neighborhood" displayname="Majority Filter Neighborhood" type="Required" direction="Input" datatype="GPString" expression="majority_neighborhood">
+				<dialogReference>Neighborhood for Majority Filter. FOUR (default): 4-connected, gentle. EIGHT: 8-connected, stronger but may erode narrow road segments. Skip: no filter applied.</dialogReference>
+			</param>
+			<param name="majority_passes" displayname="Majority Filter Passes" type="Required" direction="Input" datatype="GPLong" expression="majority_passes">
+				<dialogReference>Number of Majority Filter iterations. Each pass erodes edges by ~1 pixel. 1 (default) = light, 2 = moderate, 3+ = aggressive (may erode narrow roads). Disabled when Skip is selected. Warning: EIGHT with multiple passes may erode narrow road segments.</dialogReference>
+			</param>
+			<param name="simplify_tol" displayname="Simplify Tolerance (m)" type="Required" direction="Input" datatype="GPDouble" expression="simplify_tol">
+				<dialogReference>Douglas-Peucker tolerance in meters for SimplifyPolygon (POINT_REMOVE). Smooths pixel-staircase boundaries before dissolve. 0.05 = minimal, 0.15 = moderate (default), 0.30 = cartographic. Applied before adjacent segments are dissolved together.</dialogReference>
+			</param>
+			<param name="min_length" displayname="Minimum Road Length (m)" type="Required" direction="Input" datatype="GPDouble" expression="min_length">
+				<dialogReference>Minimum MBR length (longest side of Minimum Bounding Rectangle) for accepted roads. Features shorter than this are classified as Rejected possible road with Reason = Length_below_min. Removes small square patches that are unlikely to be real road segments. Default: 3.0.</dialogReference>
+			</param>
+			<param name="min_width" displayname="Minimum Road Width (m)" type="Required" direction="Input" datatype="GPDouble" expression="min_width">
+				<dialogReference>Minimum MBR width (shortest side of Minimum Bounding Rectangle) for accepted roads. Features narrower than this are classified as Rejected possible road with Reason = Width_below_min. Typical single-lane road: 2.5-3.5 m, two-lane: 5.5-7.0 m. Default: 1.5.</dialogReference>
+			</param>
+			<param name="do_centerlines" displayname="Generate Centerline Polylines" type="Required" direction="Input" datatype="GPBoolean" expression="do_centerlines">
+				<dialogReference>If checked (default), polyline centerlines are extracted from accepted road polygons. Primary method: Voronoi medial axis (requires shapely, scipy, networkx). Fallback: morphological Thin. Centerlines inherit parent polygon attributes via SpatialJoin and include CL_Len_m (length in meters). Output: road_centerlines.shp.</dialogReference>
+			</param>
+			<param name="min_cl_length" displayname="Minimum Centerline Length (m)" type="Required" direction="Input" datatype="GPDouble" expression="min_cl_length">
+				<dialogReference>Minimum length for centerline segments in meters. Centerlines shorter than this are removed. Filters out small stub centerlines from complex intersections. Default: 5.0. Located in the Centerline Parameters group.</dialogReference>
+			</param>
+			<param name="max_hole_area" displayname="Max Hole Area to Fill (m2)" type="Required" direction="Input" datatype="GPDouble" expression="max_hole_area">
+				<dialogReference>Interior holes in road polygons smaller than this area (m2) are filled before Voronoi centerline extraction. Vehicles, shadows, and small misclassified objects inside the road create holes that force the medial axis to branch around them. Filling small holes produces clean, straight centerlines. Default: 20.0 (covers most vehicles at ~12 m2).</dialogReference>
+			</param>
+			<param name="prune_factor" displayname="Prune Factor (x median road width)" type="Required" direction="Input" datatype="GPDouble" expression="prune_factor">
+				<dialogReference>Terminal branches in the Voronoi medial axis graph shorter than (prune_factor x median MBR width) are iteratively removed. Controls how aggressively short spurs are pruned. Lower values keep more detail; higher values produce cleaner centerlines. Default: 2.0.</dialogReference>
+			</param>
+			<param name="densify_factor" displayname="Densify Factor (x cell size)" type="Required" direction="Input" datatype="GPDouble" expression="densify_factor">
+				<dialogReference>The polygon boundary is sampled at intervals of (densify_factor x cell size) meters before computing the Voronoi diagram. Lower values produce a finer medial axis (more computation); higher values are faster but less precise. The interval is clamped to a minimum of 0.15 m. Default: 5.0.</dialogReference>
+			</param>
+			<param name="do_centroids" displayname="Generate Centroid Points" type="Required" direction="Input" datatype="GPBoolean" expression="do_centroids">
+				<dialogReference>Creates road_points.shp with one centroid per road polygon (all features: accepted and rejected). Attributes carried over. Useful for heatmaps, density analysis, web maps.</dialogReference>
+			</param>
+			<param name="out_folder" displayname="Output Folder" type="Required" direction="Input" datatype="DEFolder" expression="out_folder">
+				<dialogReference>Root folder for results. A roads subfolder is created. Outputs: road_results.shp, road_centerlines.shp (optional), road_points.shp (optional), road_log.json. Existing outputs are overwritten.</dialogReference>
+			</param>
+		</parameters>
+	</tool>
+</metadata>

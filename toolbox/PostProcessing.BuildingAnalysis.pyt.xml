@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata xml:lang="en">
+	<Esri>
+		<CreaDate>20260320</CreaDate>
+		<CreaTime>120000</CreaTime>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<ArcGISProfile>ItemDescription</ArcGISProfile>
+	</Esri>
+	<tool name="BuildingAnalysis" displayname="2. Building Analysis" toolboxalias="PostProc">
+		<summary>Building footprint post-processing for semantic segmentation outputs (DeepLabV3 + PointRend, ResNet-101 backbone). Extracts building pixels from a single-band classified raster, applies morphological filtering (Majority Filter), vectorizes to polygons, regularizes footprints (RegularizeBuildingFootprint with RIGHT_ANGLES / RIGHT_ANGLES_AND_DIAGONALS / ANY_ANGLE), computes geometry and Minimum Bounding Rectangle (MBR) attributes, enriches with nDSM height and thermal statistics, and classifies features as Building or Rejected possible building based on area and nDSM height thresholds. Produces a single output shapefile with accepted and rejected features, optional centroid points, and a JSON run log.
+
+Requires Spatial Analyst and 3D Analyst extensions.
+
+PIPELINE (8 phases): Extract binary &gt; Majority Filter &gt; Vectorize &gt; Regularize &gt; Geometry and MBR &gt; Enrichment (nDSM + Thermal) &gt; Classification &gt; Export.
+
+INPUTS: Classified Raster (single-band, integer), Building Class Value (from raster unique values), nDSM Raster (m), Thermal Raster (deg C, optional), Area of Interest (optional), Output CRS (optional).
+
+OUTPUTS: building_results.shp (single layer with Class + Reason fields), building_points.shp (centroids, optional), building_log.json.
+
+FIELDS: BuildingID, Area_m2, Perim_m, MBR_W, MBR_L, MBR_Azim, LW_Ratio, Compact, MEAN_nDSM, MEAN_Therm (if thermal provided), Class, Reason.
+
+Part of the PostProcessing Toolbox (modular architecture: PostProcessing.pyt + _postproc_common.py + _building_core.py).
+
+Developed by Nikolaos Koroniadis, MSc thesis, Geography and Applied Geoinformatics, University of the Aegean (https://geography.aegean.gr/geoinformatics/). Remote Sensing and GIS Research Group (https://rsgis.aegean.gr/).</summary>
+		<usage>Run from ArcGIS Pro Catalog: PostProcessing.pyt &gt; Building &gt; 2. Building Analysis. Select the classified raster, pick the building class value from the dropdown, provide an nDSM raster, and choose an output folder. The tool creates a buildings subfolder with results. Optionally provide thermal data, an AOI mask, and a different output coordinate system. Adjust regularization method and nDSM thresholds as needed. Review the building_log.json for full run parameters and statistics.</usage>
+		<parameters>
+			<param name="in_classified" displayname="Classified Raster" type="Required" direction="Input" datatype="GPRasterLayer" expression="in_classified">
+				<dialogReference>Single-band classified raster with integer pixel values representing land cover classes. Each unique value is a different class. The tool extracts pixels matching the Building Class Value parameter.</dialogReference>
+			</param>
+			<param name="building_class" displayname="Building Class Value" type="Required" direction="Input" datatype="GPLong" expression="building_class">
+				<dialogReference>The pixel value in the classified raster that represents buildings. When you select a classified raster, the unique class values found in the raster are listed as choices. Pick the value that corresponds to buildings.</dialogReference>
+			</param>
+			<param name="in_ndsm" displayname="nDSM Raster (m)" type="Required" direction="Input" datatype="GPRasterLayer" expression="in_ndsm">
+				<dialogReference>Normalized Digital Surface Model, heights above ground in meters. Used for mean height per feature via Zonal Statistics and for classification (min nDSM threshold). Typical: single-storey 3-4 m, two-storey 6-8 m, apartment 10-25 m.</dialogReference>
+			</param>
+			<param name="in_thermal" displayname="Thermal Raster (deg C)" type="Optional" direction="Input" datatype="GPRasterLayer" expression="in_thermal">
+				<dialogReference>Single-band thermal raster in degrees Celsius (Altum-PT LWIR). If provided, MEAN_Therm is computed per feature via Zonal Statistics. The CRS of the thermal raster is displayed during validation.</dialogReference>
+			</param>
+			<param name="in_aoi" displayname="Area of Interest" type="Optional" direction="Input" datatype="Multiple" expression="in_aoi">
+				<dialogReference>Polygon or raster mask to clip the study area. If not set, the intersection of classified and nDSM extents is used.</dialogReference>
+			</param>
+			<param name="out_crs" displayname="Output Coordinate System" type="Optional" direction="Input" datatype="GPCoordinateSystem" expression="out_crs">
+				<dialogReference>Coordinate reference system for all output shapefiles. Select from the globe icon or type an EPSG code (e.g. 2100 for EGSA87 / Greek Grid). Default: same as the classified raster. Applied only at the export phase.</dialogReference>
+			</param>
+			<param name="cell_size_option" displayname="Processing Cell Size" type="Required" direction="Input" datatype="GPString" expression="cell_size_option">
+				<dialogReference>Cell size for raster processing. Classified raster cell size (default, recommended) preserves full detail. Maximum of inputs uses the coarsest resolution. Custom allows a user-defined value in meters.</dialogReference>
+			</param>
+			<param name="cell_size_custom" displayname="Custom Cell Size (m)" type="Optional" direction="Input" datatype="GPDouble" expression="cell_size_custom">
+				<dialogReference>User-defined cell size in meters. Only active when Processing Cell Size is set to Custom.</dialogReference>
+			</param>
+			<param name="min_area" displayname="Minimum Building Area (m2)" type="Required" direction="Input" datatype="GPDouble" expression="min_area">
+				<dialogReference>Polygons smaller than this area (m2) are classified as Rejected possible building with Reason = Area_below_min. Reference: small shed 3-5, garage 15-25, house 60-150, apartment 200-500+ m2. Default: 5.0.</dialogReference>
+			</param>
+			<param name="max_area" displayname="Maximum Building Area (m2)" type="Required" direction="Input" datatype="GPDouble" expression="max_area">
+				<dialogReference>Polygons larger than this area (m2) are classified as Rejected possible building with Reason = Area_above_max. Very large polygons are likely merged buildings or misclassifications. Default: 1000.0.</dialogReference>
+			</param>
+			<param name="min_ndsm" displayname="Minimum nDSM Height (m)" type="Required" direction="Input" datatype="GPDouble" expression="min_ndsm">
+				<dialogReference>Minimum mean nDSM height in meters. Features with MEAN_nDSM below this threshold are classified as Rejected possible building with Reason = nDSM_below_min. Filters flat surfaces (platforms, pavements) misclassified as buildings. Default: 1.0 m. Set to 0 to disable.</dialogReference>
+			</param>
+			<param name="reject_null_ndsm" displayname="Reject Features with NULL nDSM" type="Required" direction="Input" datatype="GPBoolean" expression="reject_null_ndsm">
+				<dialogReference>How to handle features where Zonal Statistics returns NULL for nDSM (polygon smaller than nDSM cell size). If checked (True): rejected with Reason = nDSM_null. If unchecked (False, default): accepted as Building with Reason = nDSM_null_kept and a warning is shown.</dialogReference>
+			</param>
+			<param name="majority_neighborhood" displayname="Majority Filter Neighborhood" type="Required" direction="Input" datatype="GPString" expression="majority_neighborhood">
+				<dialogReference>Neighborhood for Majority Filter. FOUR (default): 4-connected, gentle. EIGHT: 8-connected, stronger. Skip: no filter applied.</dialogReference>
+			</param>
+			<param name="majority_passes" displayname="Majority Filter Passes" type="Required" direction="Input" datatype="GPLong" expression="majority_passes">
+				<dialogReference>Number of Majority Filter iterations. 1 (default) = light, 2 = moderate, 3+ = aggressive. Disabled when Skip is selected.</dialogReference>
+			</param>
+			<param name="regularize_method" displayname="Regularize Method" type="Required" direction="Input" datatype="GPString" expression="regularize_method">
+				<dialogReference>Method for RegularizeBuildingFootprint. RIGHT_ANGLES (default): enforces 90-degree corners, best for typical buildings. RIGHT_ANGLES_AND_DIAGONALS: allows 90 and 45-degree angles, good for L-shaped or angled buildings. ANY_ANGLE: preserves original angles, for irregular structures.</dialogReference>
+			</param>
+			<param name="regularize_tol" displayname="Regularize Tolerance (m)" type="Required" direction="Input" datatype="GPDouble" expression="regularize_tol">
+				<dialogReference>Tolerance for RegularizeBuildingFootprint in meters. Controls how aggressively edges are straightened. 0.05 = minimal, 0.10 = moderate (default), 0.25 = strong, 0.50+ = aggressive. Larger values produce cleaner footprints but may lose detail on small structures.</dialogReference>
+			</param>
+			<param name="do_centroids" displayname="Generate Centroid Points" type="Required" direction="Input" datatype="GPBoolean" expression="do_centroids">
+				<dialogReference>Creates building_points.shp with one centroid per feature (all features: accepted and rejected). Attributes carried over. Useful for building counts, density analysis, web maps.</dialogReference>
+			</param>
+			<param name="out_folder" displayname="Output Folder" type="Required" direction="Input" datatype="DEFolder" expression="out_folder">
+				<dialogReference>Root folder for results. A buildings subfolder is created. Outputs: building_results.shp, building_points.shp (optional), building_log.json. Existing outputs are overwritten.</dialogReference>
+			</param>
+		</parameters>
+	</tool>
+</metadata>

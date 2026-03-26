@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vehicle Analysis Pipeline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0a0f1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #2a3550;
+    --text: #e2e8f0;
+    --text-dim: #8896b3;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --green: #34d399;
+    --red: #f87171;
+    --orange: #fb923c;
+    --yellow: #fbbf24;
+    --vehicle-color: #38bdf8;
+    --noise-color: #f87171;
+    --barrel-color: #fb923c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 40px 20px 20px;
+  }
+  .header h1 {
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+  }
+  .header p {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-weight: 300;
+  }
+
+  .pipeline-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: 'DM Sans', sans-serif;
+    padding: 10px 24px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--accent); }
+  .btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .btn.play { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; }
+  .btn.play:hover { opacity: 0.9; }
+
+  /* Scene */
+  .scene {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 30px;
+    min-height: 400px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .scene::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(56,189,248,0.03), transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(129,140,248,0.03), transparent 60%);
+    pointer-events: none;
+  }
+
+  .phase-label {
+    position: absolute;
+    top: 16px;
+    left: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.8;
+  }
+  .phase-title {
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    min-height: 36px;
+  }
+  .phase-desc {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    margin-bottom: 24px;
+    min-height: 22px;
+    font-weight: 300;
+  }
+
+  /* Grid area for pixel display */
+  .pixel-grid {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    min-height: 260px;
+  }
+
+  /* Object card */
+  .obj-card {
+    width: 180px;
+    text-align: center;
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+  .obj-card.hidden { opacity: 0; transform: scale(0.5); pointer-events: none; }
+  .obj-card.rejected {
+    opacity: 0.3;
+    transform: scale(0.8);
+    filter: grayscale(0.8);
+  }
+  .obj-card.accepted .obj-badge { background: var(--green); }
+  .obj-card.rejected .obj-badge { background: var(--red); }
+
+  .obj-visual {
+    width: 140px;
+    height: 100px;
+    margin: 0 auto 12px;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    transition: all 0.4s;
+  }
+  .obj-card.accepted .obj-visual { border-color: var(--green); box-shadow: 0 0 20px rgba(52,211,153,0.2); }
+  .obj-card.rejected .obj-visual { border-color: var(--red); box-shadow: 0 0 20px rgba(248,113,113,0.15); }
+
+  .obj-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+  }
+  .obj-stats {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .obj-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--bg);
+    margin-top: 8px;
+    transition: all 0.4s;
+    opacity: 0;
+  }
+  .obj-badge.show { opacity: 1; }
+
+  /* SVG vehicles */
+  .svg-scene { width: 100%; height: 100%; }
+
+  /* Pixel noise overlay */
+  .noise-dots {
+    position: absolute;
+    inset: 0;
+    transition: opacity 0.5s;
+  }
+  .noise-dot {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: var(--noise-color);
+    border-radius: 1px;
+    transition: all 0.4s;
+  }
+
+  /* Staircase effect */
+  .staircase {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transition: opacity 0.5s;
+  }
+
+  /* Phase indicator bar */
+  .phase-bar {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .phase-dot {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+  .phase-dot.active { background: var(--accent); }
+  .phase-dot.done { background: var(--green); }
+
+  /* Info panel */
+  .info-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .info-panel h3 {
+    font-size: 0.85rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .legend {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 30px 20px;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    font-weight: 300;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  /* Arrow animation */
+  @keyframes arrowPulse {
+    0%, 100% { opacity: 0.4; transform: translateX(0); }
+    50% { opacity: 1; transform: translateX(4px); }
+  }
+  .arrow-anim { animation: arrowPulse 1.2s ease infinite; display: inline-block; }
+
+  /* Fade-in */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-up { animation: fadeUp 0.6s ease forwards; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Vehicle Analysis Pipeline</h1>
+  <p>Post-processing workflow for semantic segmentation vehicle detections</p>
+</div>
+
+<div class="pipeline-container">
+
+  <div class="phase-bar" id="phaseBar"></div>
+
+  <div class="controls">
+    <button class="btn play" id="btnPlay" onclick="playAll()">&#9654; Play Animation</button>
+    <button class="btn" onclick="goPhase(0)">Input</button>
+    <button class="btn" onclick="goPhase(1)">Extract</button>
+    <button class="btn" onclick="goPhase(2)">Filter</button>
+    <button class="btn" onclick="goPhase(3)">Vectorize</button>
+    <button class="btn" onclick="goPhase(4)">Simplify</button>
+    <button class="btn" onclick="goPhase(5)">Geometry</button>
+    <button class="btn" onclick="goPhase(6)">Enrich</button>
+    <button class="btn" onclick="goPhase(7)">Classify</button>
+    <button class="btn" onclick="goPhase(8)">Output</button>
+  </div>
+
+  <div class="scene" id="scene">
+    <div class="phase-label" id="phaseLabel">Phase 0 / 8</div>
+    <div class="phase-title" id="phaseTitle">Classified Raster Input</div>
+    <div class="phase-desc" id="phaseDesc">Raw single-band classified raster with all land cover classes</div>
+    <div class="pixel-grid" id="pixelGrid"></div>
+  </div>
+
+  <div class="info-panel">
+    <h3>Legend</h3>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background: var(--vehicle-color)"></div> Vehicle pixels</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--noise-color)"></div> Salt-and-pepper noise</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--barrel-color)"></div> Non-vehicle object (barrel)</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--green)"></div> Accepted (Vehicle)</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--red)"></div> Rejected</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Developed by <strong>Nikolaos Koroniadis</strong> · MSc Thesis ·
+  <a href="https://geography.aegean.gr/geoinformatics/" target="_blank">Geography &amp; Applied Geoinformatics</a>,
+  University of the Aegean ·
+  <a href="https://rsgis.aegean.gr/" target="_blank">Remote Sensing &amp; GIS Research Group</a>
+</div>
+
+<script>
+const phases = [
+  {
+    label: "Phase 0 / 8", title: "Classified Raster Input",
+    desc: "Raw single-band raster · 7 classes · ~4.5 cm resolution",
+    showNoise: true, showAll: true, staircase: false,
+    simplified: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 1 / 8", title: "Extract Vehicle Pixels",
+    desc: "Con(VALUE = vehicle_class, 1, 0) → binary raster",
+    showNoise: true, showAll: false, staircase: false,
+    simplified: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 2 / 8", title: "Majority Filter",
+    desc: "FOUR neighborhood · 1 pass → salt-and-pepper removal",
+    showNoise: false, showAll: false, staircase: false,
+    simplified: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 3 / 8", title: "Vectorization",
+    desc: "Raster to Polygon · NO_SIMPLIFY · SINGLE_OUTER_PART",
+    showNoise: false, showAll: false, staircase: true,
+    simplified: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 4 / 8", title: "Simplify Polygon",
+    desc: "Douglas-Peucker · tolerance = 0.10 m",
+    showNoise: false, showAll: false, staircase: false,
+    simplified: true, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 5 / 8", title: "Geometry & MBR",
+    desc: "Area, Perimeter, MBR Width/Length, L/W Ratio, Compactness",
+    showNoise: false, showAll: false, staircase: false,
+    simplified: true, stats: true, enriched: false, classified: false
+  },
+  {
+    label: "Phase 6 / 8", title: "Attribute Enrichment",
+    desc: "ZonalStatistics → MEAN_nDSM (m), MEAN_Therm (°C)",
+    showNoise: false, showAll: false, staircase: false,
+    simplified: true, stats: true, enriched: true, classified: false
+  },
+  {
+    label: "Phase 7 / 8", title: "Classification & Filtering",
+    desc: "Area: 1.5–12.0 m² · L/W ≥ 1.5 → Vehicle or Rejected",
+    showNoise: false, showAll: false, staircase: false,
+    simplified: true, stats: true, enriched: true, classified: true
+  },
+  {
+    label: "Phase 8 / 8", title: "Final Output",
+    desc: "vehicle_results.shp · vehicle_points.shp · vehicle_log.json",
+    showNoise: false, showAll: false, staircase: false,
+    simplified: true, stats: true, enriched: true, classified: true, final: true
+  }
+];
+
+const objects = [
+  { id: "car", name: "Sedan", area: 7.8, lw: 2.4, ndsm: 1.5, therm: 38.2,
+    color: "#38bdf8", accepted: true, w: 140, h: 58 },
+  { id: "moto", name: "Motorcycle", area: 2.1, lw: 3.1, ndsm: 1.1, therm: 35.6,
+    color: "#38bdf8", accepted: true, w: 100, h: 32 },
+  { id: "barrel", name: "Barrel (rooftop)", area: 1.8, lw: 1.1, ndsm: 1.0, therm: 42.1,
+    color: "#fb923c", accepted: false, reason: "LW_below_min", w: 50, h: 46 },
+  { id: "noise", name: "Noise cluster", area: 0.3, lw: 1.0, ndsm: 0.2, therm: 30.1,
+    color: "#f87171", accepted: false, reason: "Area_below_min", w: 24, h: 20 }
+];
+
+let currentPhase = 0;
+let playing = false;
+
+function buildPhaseBar() {
+  const bar = document.getElementById('phaseBar');
+  bar.innerHTML = phases.map((_, i) =>
+    `<div class="phase-dot" id="pd${i}"></div>`
+  ).join('');
+}
+
+function drawSVGVehicle(obj, phase) {
+  const p = phases[phase];
+  const jagged = p.staircase && !p.simplified;
+  const smooth = p.simplified || (!p.staircase && phase >= 4);
+
+  let shape = '';
+  const cx = 70, cy = 50;
+
+  if (obj.id === 'car') {
+    if (jagged) {
+      shape = `<polygon points="10,70 10,65 15,65 15,60 20,60 20,50 25,50 25,40 30,40 30,35 40,35 40,30 100,30 100,35 110,35 110,40 120,40 120,50 130,50 130,65 125,65 125,70 115,70 115,65 110,65 110,70 40,70 40,65 30,65 30,70" fill="${obj.color}" opacity="0.85"/>`;
+    } else {
+      shape = `<path d="M15,68 L15,52 Q15,42 25,38 L40,30 Q50,26 60,26 L90,26 Q105,26 112,34 L125,48 Q132,55 132,62 L132,68 Q132,72 128,72 L112,72 Q108,72 108,68 Q108,62 102,62 Q96,62 96,68 Q96,72 92,72 L48,72 Q44,72 44,68 Q44,62 38,62 Q32,62 32,68 Q32,72 28,72 L18,72 Q15,72 15,68Z" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<rect x="35" y="32" width="30" height="18" rx="3" fill="rgba(255,255,255,0.15)"/>`;
+      shape += `<rect x="72" y="32" width="35" height="18" rx="3" fill="rgba(255,255,255,0.15)"/>`;
+      shape += `<circle cx="38" cy="68" r="10" fill="#1a2235" stroke="#2a3550" stroke-width="2"/>`;
+      shape += `<circle cx="102" cy="68" r="10" fill="#1a2235" stroke="#2a3550" stroke-width="2"/>`;
+    }
+  } else if (obj.id === 'moto') {
+    if (jagged) {
+      shape = `<polygon points="20,65 20,60 25,60 25,55 30,55 30,45 35,45 35,40 45,40 45,35 55,35 55,30 60,30 65,35 70,35 75,40 80,40 80,50 85,50 85,55 90,55 90,60 85,60 85,65 75,65 75,60 70,60 70,65 45,65 45,60 35,60 35,65" fill="${obj.color}" opacity="0.85"/>`;
+    } else {
+      shape = `<ellipse cx="35" cy="60" rx="14" ry="14" fill="#1a2235" stroke="#2a3550" stroke-width="2"/>`;
+      shape += `<ellipse cx="85" cy="60" rx="14" ry="14" fill="#1a2235" stroke="#2a3550" stroke-width="2"/>`;
+      shape += `<path d="M30,55 L40,30 L55,25 L65,28 L75,40 L85,50 L80,55 L50,58Z" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<rect x="42" y="28" width="12" height="8" rx="2" fill="rgba(255,255,255,0.15)"/>`;
+    }
+  } else if (obj.id === 'barrel') {
+    if (jagged) {
+      shape = `<polygon points="55,20 60,20 60,15 85,15 85,20 90,20 90,80 85,80 85,85 60,85 60,80 55,80" fill="${obj.color}" opacity="0.85"/>`;
+    } else {
+      shape = `<ellipse cx="72" cy="50" rx="22" ry="30" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<line x1="50" y1="40" x2="94" y2="40" stroke="rgba(0,0,0,0.2)" stroke-width="2"/>`;
+      shape += `<line x1="50" y1="60" x2="94" y2="60" stroke="rgba(0,0,0,0.2)" stroke-width="2"/>`;
+    }
+  } else {
+    shape = `<rect x="58" y="38" width="24" height="24" fill="${obj.color}" opacity="0.6" rx="${jagged ? 0 : 2}"/>`;
+  }
+
+  return `<svg viewBox="0 0 140 100" class="svg-scene">${shape}</svg>`;
+}
+
+function renderPhase(phase) {
+  currentPhase = phase;
+  const p = phases[phase];
+  document.getElementById('phaseLabel').textContent = p.label;
+  document.getElementById('phaseTitle').textContent = p.title;
+  document.getElementById('phaseDesc').textContent = p.desc;
+
+  // Phase bar
+  document.querySelectorAll('.phase-dot').forEach((dot, i) => {
+    dot.className = 'phase-dot';
+    if (i < phase) dot.classList.add('done');
+    if (i === phase) dot.classList.add('active');
+  });
+
+  // Button highlights
+  document.querySelectorAll('.controls .btn:not(.play)').forEach((btn, i) => {
+    btn.classList.toggle('active', i === phase);
+  });
+
+  const grid = document.getElementById('pixelGrid');
+  let html = '';
+
+  const showObjs = p.showAll ? objects :
+    (phase === 0 ? objects : objects.filter(o => o.id !== 'noise' || p.showNoise));
+
+  const visibleObjs = phase >= 2 ? showObjs.filter(o => o.id !== 'noise') : showObjs;
+
+  visibleObjs.forEach(obj => {
+    let cardClass = 'obj-card fade-up';
+    if (p.classified) {
+      cardClass += obj.accepted ? ' accepted' : ' rejected';
+    }
+    if (phase === 1 && obj.id !== 'car' && obj.id !== 'moto' && obj.id !== 'barrel' && obj.id !== 'noise') {
+      cardClass += ' hidden';
+    }
+
+    let stats = '';
+    if (p.stats) {
+      stats += `Area: ${obj.area} m²<br>`;
+      stats += `L/W: ${obj.lw}<br>`;
+      stats += `Compact: ${(4 * Math.PI * obj.area / Math.pow(Math.sqrt(obj.area * 4) * (1 + 1/obj.lw), 2)).toFixed(2)}`;
+    }
+    if (p.enriched) {
+      stats += `<br>nDSM: ${obj.ndsm} m`;
+      stats += `<br>Therm: ${obj.therm}°C`;
+    }
+
+    let badge = '';
+    if (p.classified) {
+      if (obj.accepted) {
+        badge = `<div class="obj-badge show" style="background:var(--green)">✓ Vehicle</div>`;
+      } else {
+        badge = `<div class="obj-badge show" style="background:var(--red)">${obj.reason}</div>`;
+      }
+    }
+
+    html += `
+      <div class="${cardClass}" style="animation-delay: ${visibleObjs.indexOf(obj) * 0.1}s">
+        <div class="obj-visual">
+          ${drawSVGVehicle(obj, phase)}
+          ${p.showNoise && (obj.id === 'car' || obj.id === 'moto') ? drawNoiseDots() : ''}
+        </div>
+        <div class="obj-name">${obj.name}</div>
+        <div class="obj-stats">${stats}</div>
+        ${badge}
+      </div>
+    `;
+  });
+
+  // Final phase extra info
+  if (p.final) {
+    html += `
+      <div class="obj-card fade-up" style="animation-delay: 0.4s; width: 220px;">
+        <div style="padding: 20px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border);">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--accent); margin-bottom: 10px;">OUTPUT FILES</div>
+          <div style="font-size: 0.82rem; line-height: 2; color: var(--text-dim);">
+            📄 vehicle_results.shp<br>
+            📍 vehicle_points.shp<br>
+            📋 vehicle_log.json
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  grid.innerHTML = html;
+}
+
+function drawNoiseDots() {
+  let dots = '';
+  for (let i = 0; i < 8; i++) {
+    const x = 5 + Math.random() * 120;
+    const y = 5 + Math.random() * 80;
+    dots += `<div class="noise-dot" style="left:${x}px;top:${y}px"></div>`;
+  }
+  return `<div class="noise-dots">${dots}</div>`;
+}
+
+function goPhase(n) {
+  playing = false;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Play Animation';
+  renderPhase(n);
+}
+
+async function playAll() {
+  if (playing) {
+    playing = false;
+    document.getElementById('btnPlay').innerHTML = '&#9654; Play Animation';
+    return;
+  }
+  playing = true;
+  document.getElementById('btnPlay').innerHTML = '&#9632; Stop';
+
+  for (let i = 0; i < phases.length; i++) {
+    if (!playing) break;
+    renderPhase(i);
+    await new Promise(r => setTimeout(r, i === 0 ? 1500 : 2200));
+  }
+  playing = false;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Replay';
+}
+
+// Init
+buildPhaseBar();
+renderPhase(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tree Analysis Pipeline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0a1208; --surface: #111f14; --surface2: #1a2e1f; --border: #2a4530;
+    --text: #e2f0e5; --text-dim: #7fa889;
+    --accent: #4ade80; --accent2: #22d3ee;
+    --green: #34d399; --red: #f87171; --orange: #fb923c; --yellow: #fbbf24;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  .header { text-align: center; padding: 40px 20px 20px; }
+  .header h1 {
+    font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header p { font-size: 0.95rem; color: var(--text-dim); margin-top: 8px; font-weight: 300; }
+
+  .pipeline-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  .controls { display: flex; justify-content: center; gap: 12px; margin-bottom: 30px; flex-wrap: wrap; }
+  .btn {
+    font-family: 'DM Sans', sans-serif; padding: 10px 24px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); border-radius: 8px; cursor: pointer;
+    font-size: 0.9rem; font-weight: 500; transition: all 0.2s;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--accent); }
+  .btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .btn.play { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; border: none; font-weight: 700; }
+
+  .scene {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 30px; min-height: 460px; position: relative; overflow: hidden; margin-bottom: 20px;
+  }
+  .scene::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(74,222,128,0.04), transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(34,211,238,0.03), transparent 60%);
+    pointer-events: none;
+  }
+
+  .phase-label {
+    position: absolute; top: 16px; left: 20px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8;
+  }
+  .phase-title { text-align: center; font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; min-height: 36px; }
+  .phase-desc { text-align: center; color: var(--text-dim); font-size: 0.88rem; margin-bottom: 24px; min-height: 22px; font-weight: 300; }
+
+  .pixel-grid { display: flex; justify-content: center; align-items: flex-start; gap: 36px; flex-wrap: wrap; min-height: 300px; }
+
+  .obj-card { width: 220px; text-align: center; transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
+  .obj-card.rejected { opacity: 0.3; transform: scale(0.85); filter: grayscale(0.7); }
+
+  .obj-visual {
+    width: 200px; height: 150px; margin: 0 auto 12px; border-radius: 12px;
+    position: relative; overflow: hidden; border: 2px solid var(--border); transition: all 0.4s;
+    background: rgba(0,0,0,0.2);
+  }
+  .obj-card.accepted .obj-visual { border-color: var(--green); box-shadow: 0 0 20px rgba(52,211,153,0.2); }
+  .obj-card.rejected .obj-visual { border-color: var(--red); box-shadow: 0 0 20px rgba(248,113,113,0.15); }
+
+  .obj-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; }
+  .obj-stats { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-dim); line-height: 1.7; }
+  .obj-badge {
+    display: inline-block; padding: 3px 12px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 600; color: var(--bg); margin-top: 8px;
+    transition: all 0.4s; opacity: 0;
+  }
+  .obj-badge.show { opacity: 1; }
+
+  .phase-bar { display: flex; gap: 4px; justify-content: center; margin-bottom: 20px; }
+  .phase-dot { width: 36px; height: 4px; border-radius: 2px; background: var(--border); transition: background 0.3s; }
+  .phase-dot.active { background: var(--accent); }
+  .phase-dot.done { background: var(--green); }
+
+  .noise-dots { position: absolute; inset: 0; transition: opacity 0.5s; }
+  .noise-dot {
+    position: absolute; width: 5px; height: 5px; border-radius: 1px;
+    transition: all 0.4s;
+  }
+
+  .info-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 16px;
+  }
+  .info-panel h3 {
+    font-size: 0.85rem; color: var(--accent); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 10px; font-family: 'JetBrains Mono', monospace;
+  }
+  .legend { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-dim); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  .footer { text-align: center; padding: 30px 20px; color: var(--text-dim); font-size: 0.78rem; font-weight: 300; }
+  .footer a { color: var(--accent); text-decoration: none; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-up { animation: fadeUp 0.6s ease forwards; }
+
+  .ws-line { stroke: var(--accent2); stroke-width: 1.5; stroke-dasharray: 4 3; opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Tree Analysis Pipeline</h1>
+  <p>PostProcessing Toolbox &middot; DeepLabV3 + PointRend &middot; MicaSense Altum-PT</p>
+</div>
+
+<div class="pipeline-container">
+  <div class="phase-bar" id="phaseBar"></div>
+
+  <div class="controls">
+    <button class="btn play" id="btnPlay" onclick="playAll()">&#9654; Play Animation</button>
+    <button class="btn" onclick="goPhase(0)">Input</button>
+    <button class="btn" onclick="goPhase(1)">Extract</button>
+    <button class="btn" onclick="goPhase(2)">Filter</button>
+    <button class="btn" onclick="goPhase(3)">Vector</button>
+    <button class="btn" onclick="goPhase(4)">Smooth</button>
+    <button class="btn" onclick="goPhase(5)">Watershed</button>
+    <button class="btn" onclick="goPhase(6)">Geometry</button>
+    <button class="btn" onclick="goPhase(7)">Enrich</button>
+    <button class="btn" onclick="goPhase(8)">Classify</button>
+    <button class="btn" onclick="goPhase(9)">Export</button>
+  </div>
+
+  <div class="scene">
+    <div class="phase-label" id="phaseLabel"></div>
+    <div class="phase-title" id="phaseTitle"></div>
+    <div class="phase-desc" id="phaseDesc"></div>
+    <div class="pixel-grid" id="pixelGrid"></div>
+  </div>
+
+  <div class="info-panel">
+    <h3>Legend</h3>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div>Tree (accepted)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22d3ee"></div>Watershed split</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fb923c"></div>Shrub (rejected &mdash; nDSM)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div>Salt-and-pepper noise</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Nikolaos Koroniadis &middot; University of the Aegean &middot;
+  <a href="https://rsgis.aegean.gr/">Remote Sensing &amp; GIS Research Group</a>
+</div>
+
+<script>
+const phases = [
+  { label: "Input", title: "Classified Raster + nDSM",
+    desc: "deeplab_50a.tif (7 classes) + nDSM.tif (height above ground)",
+    noise: true, jagged: false, smooth: false, watershed: false, stats: false, enriched: false, classified: false },
+  { label: "Phase 1 / 9", title: "Extract Tree Pixels",
+    desc: "Con(VALUE = 1, 1, 0) \u2192 binary raster",
+    noise: true, jagged: false, smooth: false, watershed: false, stats: false, enriched: false, classified: false },
+  { label: "Phase 2 / 9", title: "Majority Filter",
+    desc: "FOUR neighborhood \u00b7 1 pass \u2192 salt-and-pepper removal",
+    noise: false, jagged: false, smooth: false, watershed: false, stats: false, enriched: false, classified: false },
+  { label: "Phase 3 / 9", title: "Vectorization",
+    desc: "RasterToPolygon \u00b7 NO_SIMPLIFY \u00b7 SINGLE_OUTER_PART",
+    noise: false, jagged: true, smooth: false, watershed: false, stats: false, enriched: false, classified: false },
+  { label: "Phase 4 / 9", title: "Smooth Polygons (PAEK)",
+    desc: "SmoothPolygon \u00b7 PAEK algorithm \u00b7 tolerance = 0.30 m",
+    noise: false, jagged: false, smooth: true, watershed: false, stats: false, enriched: false, classified: false },
+  { label: "Phase 4.5 / 9", title: "Watershed Crown Separation",
+    desc: "Only polygons > 120 m\u00b2 \u00b7 search radius 6 m \u00b7 prominence \u2265 2 m \u00b7 3+ peaks \u2192 split",
+    noise: false, jagged: false, smooth: true, watershed: true, stats: false, enriched: false, classified: false },
+  { label: "Phase 5 / 9", title: "Geometry & MBR",
+    desc: "Area, Perimeter, MBR Width/Length, L/W Ratio, Compactness",
+    noise: false, jagged: false, smooth: true, watershed: true, stats: true, enriched: false, classified: false },
+  { label: "Phase 6 / 9", title: "Attribute Enrichment",
+    desc: "ZonalStatistics \u2192 MEAN_nDSM (m), MEAN_Therm (\u00b0C)",
+    noise: false, jagged: false, smooth: true, watershed: true, stats: true, enriched: true, classified: false },
+  { label: "Phase 7 / 9", title: "Classification & Filtering",
+    desc: "Area: 2\u2013260 m\u00b2 \u00b7 nDSM \u2265 1.0 m \u2192 Tree or Rejected",
+    noise: false, jagged: false, smooth: true, watershed: true, stats: true, enriched: true, classified: true },
+  { label: "Phase 8 / 9", title: "Final Output",
+    desc: "tree_results.shp \u00b7 tree_points.shp \u00b7 tree_log.json",
+    noise: false, jagged: false, smooth: true, watershed: true, stats: true, enriched: true, classified: true, final: true }
+];
+
+const objects = [
+  { id: "cluster", name: "Tree Cluster", area: 185.0, lw: 1.8, ndsm: 8.2, therm: 24.5,
+    color: "#4ade80", accepted: true, reason: "",
+    splitAreas: [52.3, 68.1, 64.6], splitNdsm: [9.1, 7.8, 7.6] },
+  { id: "tree", name: "Tree", area: 28.4, lw: 1.2, ndsm: 4.6, therm: 26.8,
+    color: "#4ade80", accepted: true, reason: "" },
+  { id: "shrub", name: "Shrub", area: 5.1, lw: 1.1, ndsm: 0.7, therm: 31.2,
+    color: "#fb923c", accepted: false, reason: "nDSM_below_min" }
+];
+
+function makeNoiseDots(count, color) {
+  let d = '';
+  for (let i = 0; i < count; i++) {
+    const x = 8 + Math.random() * 180;
+    const y = 8 + Math.random() * 130;
+    d += `<div class="noise-dot" style="left:${x}px;top:${y}px;background:${color}"></div>`;
+  }
+  return `<div class="noise-dots">${d}</div>`;
+}
+
+function drawTree(obj, phase) {
+  const p = phases[phase];
+  const jag = p.jagged;
+  const ws = p.watershed;
+
+  if (obj.id === "cluster") {
+    if (jag) {
+      return `<svg viewBox="0 0 200 150">
+        <polygon points="10,140 10,130 15,130 15,120 20,120 20,100 25,100 25,80 30,80 30,65 35,65 35,55 40,55 40,50 50,50 55,45 60,45 65,50 70,50 75,45 80,40 85,40 90,35 95,40 100,40 105,45 110,45 115,50 120,45 125,40 130,35 135,35 140,40 145,45 150,45 155,50 160,55 165,55 165,65 170,65 170,80 175,80 175,100 180,100 180,120 185,120 185,130 190,130 190,140"
+        fill="#4ade80" opacity="0.7"/></svg>`;
+    }
+    if (ws) {
+      return `<svg viewBox="0 0 200 150">
+        <path d="M10,140 Q10,80 40,55 Q55,42 70,50 Q75,52 72,60 Q68,72 65,80 L65,140Z" fill="#4ade80" opacity="0.7" stroke="#166534" stroke-width="0.8"/>
+        <path d="M65,140 L65,80 Q68,72 72,60 Q75,52 85,38 Q100,30 115,42 Q120,48 118,60 Q115,75 110,85 L110,140Z" fill="#34d399" opacity="0.7" stroke="#166534" stroke-width="0.8"/>
+        <path d="M110,140 L110,85 Q115,75 118,60 Q120,48 130,38 Q145,32 160,50 Q175,68 190,140Z" fill="#22c55e" opacity="0.7" stroke="#166534" stroke-width="0.8"/>
+        <line x1="65" y1="28" x2="65" y2="140" class="ws-line"/>
+        <line x1="110" y1="28" x2="110" y2="140" class="ws-line"/>
+        <circle cx="40" cy="52" r="4" fill="#22d3ee" opacity="0.9"/>
+        <text x="40" y="44" text-anchor="middle" fill="#22d3ee" font-size="8" font-weight="600">P1</text>
+        <circle cx="95" cy="34" r="4" fill="#22d3ee" opacity="0.9"/>
+        <text x="95" y="26" text-anchor="middle" fill="#22d3ee" font-size="8" font-weight="600">P2</text>
+        <circle cx="150" cy="40" r="4" fill="#22d3ee" opacity="0.9"/>
+        <text x="150" y="32" text-anchor="middle" fill="#22d3ee" font-size="8" font-weight="600">P3</text>
+        <text x="100" y="148" text-anchor="middle" fill="#7fa889" font-size="7">3 peaks \u2192 split into 3 crowns</text>
+      </svg>`;
+    }
+    return `<svg viewBox="0 0 200 150">
+      <path d="M10,140 Q10,80 35,55 Q55,38 80,35 Q100,32 120,38 Q145,32 165,50 Q180,65 190,140Z" fill="#4ade80" opacity="0.7"/>
+      <path d="M40,140 Q45,110 50,95 Q55,80 60,75" fill="none" stroke="#166534" stroke-width="1.5" opacity="0.5"/>
+      <path d="M100,140 Q100,110 100,90 Q100,75 95,65" fill="none" stroke="#166534" stroke-width="1.8" opacity="0.5"/>
+      <path d="M155,140 Q152,105 148,85 Q145,70 148,58" fill="none" stroke="#166534" stroke-width="1.5" opacity="0.5"/>
+    </svg>`;
+  }
+
+  if (obj.id === "tree") {
+    if (jag) {
+      return `<svg viewBox="0 0 200 150">
+        <polygon points="70,140 70,110 75,110 75,100 70,100 70,90 65,90 65,75 70,75 70,60 75,60 75,50 80,50 80,45 85,45 90,40 95,40 100,45 105,45 110,50 115,50 115,55 120,55 125,60 130,65 135,65 135,75 130,75 130,90 125,90 125,100 120,100 120,110 125,110 125,140"
+        fill="#4ade80" opacity="0.75"/></svg>`;
+    }
+    return `<svg viewBox="0 0 200 150">
+      <ellipse cx="98" cy="70" rx="42" ry="38" fill="#4ade80" opacity="0.7"/>
+      <path d="M95,140 Q95,110 96,85" fill="none" stroke="#166534" stroke-width="2" opacity="0.5"/>
+      <path d="M96,85 Q85,68 78,55" fill="none" stroke="#166534" stroke-width="1.2" opacity="0.4"/>
+      <path d="M96,85 Q108,70 115,58" fill="none" stroke="#166534" stroke-width="1.2" opacity="0.4"/>
+    </svg>`;
+  }
+
+  if (obj.id === "shrub") {
+    if (jag) {
+      return `<svg viewBox="0 0 200 150">
+        <polygon points="70,140 70,120 75,120 75,115 80,115 80,110 85,110 90,110 95,105 100,105 105,110 110,110 115,115 120,115 125,120 125,140"
+        fill="#fb923c" opacity="0.7"/></svg>`;
+    }
+    return `<svg viewBox="0 0 200 150">
+      <ellipse cx="98" cy="118" rx="35" ry="18" fill="#fb923c" opacity="0.65"/>
+      <ellipse cx="88" cy="110" rx="20" ry="14" fill="#fb923c" opacity="0.55"/>
+      <ellipse cx="110" cy="112" rx="18" ry="12" fill="#fb923c" opacity="0.5"/>
+    </svg>`;
+  }
+}
+
+let currentPhase = 0, playing = false;
+
+function buildPhaseBar() {
+  document.getElementById('phaseBar').innerHTML = phases.map((_, i) =>
+    `<div class="phase-dot" id="pd${i}"></div>`
+  ).join('');
+}
+
+function renderPhase(phase) {
+  currentPhase = phase;
+  const p = phases[phase];
+  document.getElementById('phaseLabel').textContent = p.label;
+  document.getElementById('phaseTitle').textContent = p.title;
+  document.getElementById('phaseDesc').textContent = p.desc;
+
+  document.querySelectorAll('.phase-dot').forEach((dot, i) => {
+    dot.className = 'phase-dot';
+    if (i < phase) dot.classList.add('done');
+    if (i === phase) dot.classList.add('active');
+  });
+  document.querySelectorAll('.controls .btn:not(.play)').forEach((btn, i) => {
+    btn.classList.toggle('active', i === phase);
+  });
+
+  const grid = document.getElementById('pixelGrid');
+  let html = '';
+  const showWs = p.watershed;
+
+  objects.forEach((obj, idx) => {
+    if (obj.id === "cluster" && showWs) {
+      obj.splitAreas.forEach((sa, si) => {
+        let cls = 'obj-card fade-up';
+        if (p.classified) cls += ' accepted';
+        let stats = '';
+        if (p.stats) stats += `Area: ${sa} m\u00b2<br>L/W: ${(1.2 + si * 0.2).toFixed(1)}`;
+        if (p.enriched) stats += `<br>nDSM: ${obj.splitNdsm[si]} m<br>Therm: ${(24.0 + si * 0.8).toFixed(1)}\u00b0C`;
+        let badge = '';
+        if (p.classified) badge = `<div class="obj-badge show" style="background:var(--green)">\u2713 Tree</div>`;
+
+        html += `<div class="${cls}" style="animation-delay:${si * 0.12}s">
+          <div class="obj-visual">
+            <svg viewBox="0 0 200 150">
+              <ellipse cx="100" cy="72" rx="${32 + si * 5}" ry="${28 + si * 3}" fill="${['#4ade80','#34d399','#22c55e'][si]}" opacity="0.7"/>
+              <path d="M98,140 Q98,110 99,80" fill="none" stroke="#166534" stroke-width="1.8" opacity="0.5"/>
+            </svg>
+          </div>
+          <div class="obj-name">Crown ${si + 1}</div>
+          <div class="obj-stats">${stats}</div>
+          ${badge}
+        </div>`;
+      });
+      return;
+    }
+
+    let cls = 'obj-card fade-up';
+    if (p.classified) cls += obj.accepted ? ' accepted' : ' rejected';
+
+    let stats = '';
+    if (p.stats) stats += `Area: ${obj.area} m\u00b2<br>L/W: ${obj.lw}`;
+    if (p.enriched) stats += `<br>nDSM: ${obj.ndsm} m<br>Therm: ${obj.therm}\u00b0C`;
+
+    let badge = '';
+    if (p.classified) {
+      badge = obj.accepted
+        ? `<div class="obj-badge show" style="background:var(--green)">\u2713 Tree</div>`
+        : `<div class="obj-badge show" style="background:var(--red)">${obj.reason}</div>`;
+    }
+
+    let noiseHtml = '';
+    if (p.noise) {
+      const nColor = obj.id === 'shrub' ? '#fb923c' : '#f87171';
+      noiseHtml = makeNoiseDots(obj.id === 'cluster' ? 12 : 6, nColor);
+    }
+
+    html += `<div class="${cls}" style="animation-delay:${idx * 0.12}s">
+      <div class="obj-visual">
+        ${drawTree(obj, phase)}
+        ${noiseHtml}
+      </div>
+      <div class="obj-name">${obj.name}</div>
+      <div class="obj-stats">${stats}</div>
+      ${badge}
+    </div>`;
+  });
+
+  if (p.final) {
+    html += `<div class="obj-card fade-up" style="animation-delay:0.5s; width:220px;">
+      <div style="padding:20px; background:var(--surface2); border-radius:10px; border:1px solid var(--border);">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:var(--accent); margin-bottom:10px;">OUTPUT FILES</div>
+        <div style="font-size:0.82rem; line-height:2; color:var(--text-dim);">
+          &#127795; tree_results.shp<br>
+          &#128205; tree_points.shp<br>
+          &#128203; tree_log.json
+        </div>
+      </div>
+    </div>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+function goPhase(n) { playing = false; document.getElementById('btnPlay').innerHTML = '\u25b6 Play Animation'; renderPhase(n); }
+
+async function playAll() {
+  if (playing) { playing = false; document.getElementById('btnPlay').innerHTML = '\u25b6 Play Animation'; return; }
+  playing = true; document.getElementById('btnPlay').innerHTML = '\u25a0 Stop';
+  for (let i = 0; i < phases.length; i++) {
+    if (!playing) break;
+    renderPhase(i);
+    await new Promise(r => setTimeout(r, i === 0 ? 1500 : 2200));
+  }
+  playing = false; document.getElementById('btnPlay').innerHTML = '\u25b6 Replay';
+}
+
+buildPhaseBar();
+renderPhase(0);
+</script>
+</body>
+</html>

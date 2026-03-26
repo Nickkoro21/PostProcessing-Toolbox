@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata xml:lang="en">
+	<Esri>
+		<CreaDate>20260320</CreaDate>
+		<CreaTime>120000</CreaTime>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<ArcGISProfile>ItemDescription</ArcGISProfile>
+	</Esri>
+	<tool name="VehicleAnalysis" displayname="1. Vehicle Analysis" toolboxalias="PostProc">
+		<summary>Vehicle detection post-processing for semantic segmentation outputs (DeepLabV3 + PointRend, ResNet-101 backbone). Extracts vehicle pixels from a single-band classified raster, applies morphological filtering (Majority Filter), vectorizes to polygons, simplifies boundaries (POINT_REMOVE), computes geometry and Minimum Bounding Rectangle (MBR) attributes, enriches with nDSM height and thermal statistics, and classifies features as Vehicle or Rejected possible vehicle based on area and L/W ratio thresholds. Produces a single output shapefile with accepted and rejected features, optional centroid points, and a JSON run log.
+
+Requires Spatial Analyst and 3D Analyst extensions.
+
+PIPELINE (8 phases): Extract binary &gt; Majority Filter &gt; Vectorize &gt; Simplify &gt; Geometry and MBR &gt; Enrichment (nDSM + Thermal) &gt; Classification &gt; Export.
+
+INPUTS: Classified Raster (single-band, integer), Vehicle Class Value (from raster unique values), nDSM Raster (m), Thermal Raster (deg C, optional), Area of Interest (optional), Output CRS (optional).
+
+OUTPUTS: vehicle_results.shp (single layer with Class + Reason fields), vehicle_points.shp (centroids, optional), vehicle_log.json.
+
+FIELDS: VehicleID, Area_m2, Perim_m, MBR_W, MBR_L, MBR_Azim, LW_Ratio, Compact, MEAN_nDSM, MEAN_Therm (if thermal provided), Class, Reason.
+
+Part of the PostProcessing Toolbox (modular architecture: PostProcessing.pyt + _postproc_common.py + _vehicle_core.py).
+
+Developed by Nikolaos Koroniadis, MSc thesis, Geography and Applied Geoinformatics, University of the Aegean (https://geography.aegean.gr/geoinformatics/). Remote Sensing and GIS Research Group (https://rsgis.aegean.gr/).</summary>
+		<usage>Run from ArcGIS Pro Catalog: PostProcessing.pyt &gt; Vehicle &gt; 1. Vehicle Analysis. Select the classified raster, pick the vehicle class value from the dropdown, provide an nDSM raster, and choose an output folder. The tool creates a vehicles subfolder with results. Optionally provide thermal data, an AOI mask, and a different output coordinate system. Review the vehicle_log.json for full run parameters and statistics.</usage>
+		<parameters>
+			<param name="in_classified" displayname="Classified Raster" type="Required" direction="Input" datatype="GPRasterLayer" expression="in_classified">
+				<dialogReference>Single-band classified raster with integer pixel values representing land cover classes. Each unique value is a different class. The tool extracts pixels matching the Vehicle Class Value parameter. Must have at least 2 unique class values.</dialogReference>
+			</param>
+			<param name="vehicle_class" displayname="Vehicle Class Value" type="Required" direction="Input" datatype="GPLong" expression="vehicle_class">
+				<dialogReference>The pixel value in the classified raster that represents vehicles. When you select a classified raster, the unique class values found in the raster are listed as choices. Pick the value that corresponds to vehicles.</dialogReference>
+			</param>
+			<param name="in_ndsm" displayname="nDSM Raster (m)" type="Required" direction="Input" datatype="GPRasterLayer" expression="in_ndsm">
+				<dialogReference>Normalized Digital Surface Model, heights above ground in meters. Used for mean height per feature via Zonal Statistics. Typical: cars 1.2-2.0 m, SUVs 1.8-2.5 m, trucks 2.5-4.0 m.</dialogReference>
+			</param>
+			<param name="in_thermal" displayname="Thermal Raster (deg C)" type="Optional" direction="Input" datatype="GPRasterLayer" expression="in_thermal">
+				<dialogReference>Single-band thermal raster in degrees Celsius (Altum-PT LWIR). If provided, MEAN_Therm is computed per feature via Zonal Statistics. The CRS of the thermal raster is displayed during validation.</dialogReference>
+			</param>
+			<param name="in_aoi" displayname="Area of Interest" type="Optional" direction="Input" datatype="Multiple" expression="in_aoi">
+				<dialogReference>Polygon or raster mask to clip the study area. If not set, the intersection of classified and nDSM extents is used.</dialogReference>
+			</param>
+			<param name="out_crs" displayname="Output Coordinate System" type="Optional" direction="Input" datatype="GPCoordinateSystem" expression="out_crs">
+				<dialogReference>Coordinate reference system for all output shapefiles. Select from the globe icon or type an EPSG code (e.g. 2100 for EGSA87 / Greek Grid). Default: same as the classified raster. The CRS is applied only at the export phase to avoid raster reprojection issues during processing.</dialogReference>
+			</param>
+			<param name="cell_size_option" displayname="Processing Cell Size" type="Required" direction="Input" datatype="GPString" expression="cell_size_option">
+				<dialogReference>Cell size for raster processing. Classified raster cell size (default, recommended) preserves full detail (~4.5 cm for Altum-PT). Maximum of inputs uses the coarsest resolution. Custom allows a user-defined value in meters.</dialogReference>
+			</param>
+			<param name="cell_size_custom" displayname="Custom Cell Size (m)" type="Optional" direction="Input" datatype="GPDouble" expression="cell_size_custom">
+				<dialogReference>User-defined cell size in meters. Only active when Processing Cell Size is set to Custom.</dialogReference>
+			</param>
+			<param name="min_area" displayname="Minimum Vehicle Area (m2)" type="Required" direction="Input" datatype="GPDouble" expression="min_area">
+				<dialogReference>Polygons smaller than this area (m2) are classified as Rejected possible vehicle with Reason = Area_below_min. Reference: motorcycle 1.5-2.5, compact car 5-7, sedan 7-9 m2. Default: 1.5.</dialogReference>
+			</param>
+			<param name="max_area" displayname="Maximum Vehicle Area (m2)" type="Required" direction="Input" datatype="GPDouble" expression="max_area">
+				<dialogReference>Polygons larger than this area (m2) are classified as Rejected possible vehicle with Reason = Area_above_max. Reference: SUV 9-12, van 15-25, truck 25-40 m2. Default: 12.0.</dialogReference>
+			</param>
+			<param name="min_lw_ratio" displayname="Minimum L/W Ratio" type="Required" direction="Input" datatype="GPDouble" expression="min_lw_ratio">
+				<dialogReference>Minimum Length/Width ratio from Minimum Bounding Rectangle. Features below this are classified as Rejected possible vehicle with Reason = LW_below_min. Removes square false positives (rooftops ~1.0-1.3). Typical vehicles: motorcycle ~3.0, car 2.0-2.8, SUV 2.2-2.6. Set to 1.0 to disable. Default: 1.5.</dialogReference>
+			</param>
+			<param name="majority_neighborhood" displayname="Majority Filter Neighborhood" type="Required" direction="Input" datatype="GPString" expression="majority_neighborhood">
+				<dialogReference>Neighborhood for Majority Filter. FOUR (default): 4-connected, gentle. EIGHT: 8-connected, stronger. Skip: no filter applied.</dialogReference>
+			</param>
+			<param name="majority_passes" displayname="Majority Filter Passes" type="Required" direction="Input" datatype="GPLong" expression="majority_passes">
+				<dialogReference>Number of Majority Filter iterations. Each pass erodes edges by ~1 pixel. 1 (default) = light, 2 = moderate, 3+ = aggressive (may erode motorcycles). Disabled when Skip is selected.</dialogReference>
+			</param>
+			<param name="simplify_tol" displayname="Simplify Tolerance (m)" type="Required" direction="Input" datatype="GPDouble" expression="simplify_tol">
+				<dialogReference>Douglas-Peucker tolerance in meters. Smooths pixel-staircase boundaries. 0.05 = minimal, 0.10 = moderate (default), 0.25 = cartographic, 0.50+ = aggressive.</dialogReference>
+			</param>
+			<param name="do_centroids" displayname="Generate Centroid Points" type="Required" direction="Input" datatype="GPBoolean" expression="do_centroids">
+				<dialogReference>Creates vehicle_points.shp with one centroid per feature (all features: accepted and rejected). Attributes carried over. Useful for heatmaps, density analysis, web maps.</dialogReference>
+			</param>
+			<param name="out_folder" displayname="Output Folder" type="Required" direction="Input" datatype="DEFolder" expression="out_folder">
+				<dialogReference>Root folder for results. A vehicles subfolder is created. Outputs: vehicle_results.shp, vehicle_points.shp (optional), vehicle_log.json. Existing outputs are overwritten.</dialogReference>
+			</param>
+		</parameters>
+	</tool>
+</metadata>

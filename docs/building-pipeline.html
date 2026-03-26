@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building Analysis Pipeline</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0a0f1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #2a3550;
+    --text: #e2e8f0;
+    --text-dim: #8896b3;
+    --accent: #818cf8;
+    --accent2: #c084fc;
+    --green: #34d399;
+    --red: #f87171;
+    --orange: #fb923c;
+    --yellow: #fbbf24;
+    --building-color: #818cf8;
+    --well-color: #fb923c;
+    --noise-color: #f87171;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 40px 20px 20px;
+  }
+  .header h1 {
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+  }
+  .header p {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-weight: 300;
+  }
+
+  .pipeline-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: 'DM Sans', sans-serif;
+    padding: 10px 24px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--accent); }
+  .btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .btn.play { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; }
+  .btn.play:hover { opacity: 0.9; }
+
+  .scene {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 30px;
+    min-height: 420px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .scene::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(129,140,248,0.03), transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(192,132,252,0.03), transparent 60%);
+    pointer-events: none;
+  }
+
+  .phase-label {
+    position: absolute;
+    top: 16px;
+    left: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.8;
+  }
+  .phase-title {
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    min-height: 36px;
+  }
+  .phase-desc {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    margin-bottom: 24px;
+    min-height: 22px;
+    font-weight: 300;
+  }
+
+  .pixel-grid {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+    flex-wrap: wrap;
+    min-height: 280px;
+  }
+
+  .obj-card {
+    width: 200px;
+    text-align: center;
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+  .obj-card.hidden { opacity: 0; transform: scale(0.5); pointer-events: none; }
+  .obj-card.rejected { opacity: 0.3; transform: scale(0.8); filter: grayscale(0.8); }
+  .obj-card.accepted .obj-badge { background: var(--green); }
+  .obj-card.rejected .obj-badge { background: var(--red); }
+
+  .obj-visual {
+    width: 160px;
+    height: 120px;
+    margin: 0 auto 12px;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    transition: all 0.4s;
+  }
+  .obj-card.accepted .obj-visual { border-color: var(--green); box-shadow: 0 0 20px rgba(52,211,153,0.2); }
+  .obj-card.rejected .obj-visual { border-color: var(--red); box-shadow: 0 0 20px rgba(248,113,113,0.15); }
+
+  .obj-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+  .obj-stats {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .obj-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--bg);
+    margin-top: 8px;
+    transition: all 0.4s;
+    opacity: 0;
+  }
+  .obj-badge.show { opacity: 1; }
+
+  .svg-scene { width: 100%; height: 100%; }
+
+  .noise-dots { position: absolute; inset: 0; transition: opacity 0.5s; }
+  .noise-dot {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: var(--noise-color);
+    border-radius: 1px;
+    transition: all 0.4s;
+  }
+
+  .phase-bar { display: flex; gap: 4px; justify-content: center; margin-bottom: 20px; }
+  .phase-dot { width: 40px; height: 4px; border-radius: 2px; background: var(--border); transition: background 0.3s; }
+  .phase-dot.active { background: var(--accent); }
+  .phase-dot.done { background: var(--green); }
+
+  .info-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .info-panel h3 {
+    font-size: 0.85rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .legend { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-dim); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  .footer {
+    text-align: center;
+    padding: 30px 20px;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    font-weight: 300;
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-up { animation: fadeUp 0.6s ease forwards; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Building Analysis Pipeline</h1>
+  <p>Post-processing workflow for semantic segmentation building detections</p>
+</div>
+
+<div class="pipeline-container">
+
+  <div class="phase-bar" id="phaseBar"></div>
+
+  <div class="controls">
+    <button class="btn play" id="btnPlay" onclick="playAll()">&#9654; Play Animation</button>
+    <button class="btn" onclick="goPhase(0)">Input</button>
+    <button class="btn" onclick="goPhase(1)">Extract</button>
+    <button class="btn" onclick="goPhase(2)">Filter</button>
+    <button class="btn" onclick="goPhase(3)">Vectorize</button>
+    <button class="btn" onclick="goPhase(4)">Regularize</button>
+    <button class="btn" onclick="goPhase(5)">Geometry</button>
+    <button class="btn" onclick="goPhase(6)">Enrich</button>
+    <button class="btn" onclick="goPhase(7)">Classify</button>
+    <button class="btn" onclick="goPhase(8)">Output</button>
+  </div>
+
+  <div class="scene" id="scene">
+    <div class="phase-label" id="phaseLabel">Phase 0 / 8</div>
+    <div class="phase-title" id="phaseTitle">Classified Raster Input</div>
+    <div class="phase-desc" id="phaseDesc">Raw single-band classified raster with all land cover classes</div>
+    <div class="pixel-grid" id="pixelGrid"></div>
+  </div>
+
+  <div class="info-panel">
+    <h3>Legend</h3>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background: var(--building-color)"></div> Building pixels</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--well-color)"></div> Low structure (well)</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--noise-color)"></div> Noise / sub-threshold</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--green)"></div> Accepted (Building)</div>
+      <div class="legend-item"><div class="legend-dot" style="background: var(--red)"></div> Rejected</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Developed by <strong>Nikolaos Koroniadis</strong> · MSc Thesis ·
+  <a href="https://geography.aegean.gr/geoinformatics/" target="_blank">Geography &amp; Applied Geoinformatics</a>,
+  University of the Aegean ·
+  <a href="https://rsgis.aegean.gr/" target="_blank">Remote Sensing &amp; GIS Research Group</a>
+</div>
+
+<script>
+const phases = [
+  {
+    label: "Phase 0 / 8", title: "Classified Raster Input",
+    desc: "Raw single-band raster · 7 classes · ~4.5 cm resolution",
+    showNoise: true, showAll: true, staircase: false,
+    regularized: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 1 / 8", title: "Extract Building Pixels",
+    desc: "Con(VALUE = building_class, 1, 0) → binary raster",
+    showNoise: true, showAll: false, staircase: false,
+    regularized: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 2 / 8", title: "Majority Filter",
+    desc: "FOUR neighborhood · 1 pass → salt-and-pepper removal",
+    showNoise: false, showAll: false, staircase: false,
+    regularized: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 3 / 8", title: "Vectorization",
+    desc: "Raster to Polygon · NO_SIMPLIFY · SINGLE_OUTER_PART",
+    showNoise: false, showAll: false, staircase: true,
+    regularized: false, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 4 / 8", title: "Regularize Building Footprints",
+    desc: "RegularizeBuildingFootprint · RIGHT_ANGLES · tol = 0.20 m",
+    showNoise: false, showAll: false, staircase: false,
+    regularized: true, stats: false, enriched: false, classified: false
+  },
+  {
+    label: "Phase 5 / 8", title: "Geometry & MBR",
+    desc: "Area, Perimeter, MBR Width/Length, L/W Ratio, Compactness",
+    showNoise: false, showAll: false, staircase: false,
+    regularized: true, stats: true, enriched: false, classified: false
+  },
+  {
+    label: "Phase 6 / 8", title: "Attribute Enrichment",
+    desc: "ZonalStatistics → MEAN_nDSM (m), MEAN_Therm (°C)",
+    showNoise: false, showAll: false, staircase: false,
+    regularized: true, stats: true, enriched: true, classified: false
+  },
+  {
+    label: "Phase 7 / 8", title: "Classification & Filtering",
+    desc: "Area: 5–1000 m² · nDSM ≥ 1.0 m → Building or Rejected",
+    showNoise: false, showAll: false, staircase: false,
+    regularized: true, stats: true, enriched: true, classified: true
+  },
+  {
+    label: "Phase 8 / 8", title: "Final Output",
+    desc: "building_results.shp · building_points.shp · building_log.json",
+    showNoise: false, showAll: false, staircase: false,
+    regularized: true, stats: true, enriched: true, classified: true, final: true
+  }
+];
+
+const objects = [
+  { id: "house", name: "House", area: 85.2, lw: 1.6, ndsm: 6.4, therm: 32.1,
+    color: "#818cf8", accepted: true, reason: "" },
+  { id: "shed", name: "Shed", area: 12.8, lw: 1.3, ndsm: 2.8, therm: 36.5,
+    color: "#818cf8", accepted: true, reason: "" },
+  { id: "well", name: "Well (cistern)", area: 8.4, lw: 1.1, ndsm: 0.4, therm: 28.3,
+    color: "#fb923c", accepted: false, reason: "nDSM_below_min" },
+  { id: "noise", name: "Noise cluster", area: 0.8, lw: 1.0, ndsm: 0.1, therm: 30.0,
+    color: "#f87171", accepted: false, reason: "Area_below_min" }
+];
+
+let currentPhase = 0;
+let playing = false;
+
+function buildPhaseBar() {
+  const bar = document.getElementById('phaseBar');
+  bar.innerHTML = phases.map((_, i) =>
+    `<div class="phase-dot" id="pd${i}"></div>`
+  ).join('');
+}
+
+function drawSVGBuilding(obj, phase) {
+  const p = phases[phase];
+  const jagged = p.staircase && !p.regularized;
+  const reg = p.regularized || (!p.staircase && phase >= 4);
+
+  let shape = '';
+
+  if (obj.id === 'house') {
+    if (jagged) {
+      shape = `<polygon points="20,95 20,90 25,90 25,85 30,85 30,55 35,55 35,50 40,50 40,45 45,45 45,40 50,40 50,35 55,35 55,30 60,30 60,25 65,25 65,20 70,20 75,20 80,25 80,30 85,30 85,35 90,35 90,40 95,40 95,45 100,45 100,50 105,50 105,55 110,55 110,85 115,85 115,90 120,90 120,95" fill="${obj.color}" opacity="0.85"/>`;
+    } else {
+      shape = `<path d="M20,95 L20,55 L70,18 L120,55 L120,95Z" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<rect x="50" y="60" width="40" height="35" rx="2" fill="rgba(255,255,255,0.12)"/>`;
+      shape += `<line x1="70" y1="60" x2="70" y2="95" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>`;
+      shape += `<line x1="50" y1="77" x2="90" y2="77" stroke="rgba(255,255,255,0.08)" stroke-width="1.5"/>`;
+      shape += `<rect x="30" y="68" width="14" height="18" rx="1" fill="rgba(255,255,255,0.12)"/>`;
+      shape += `<rect x="96" y="68" width="14" height="18" rx="1" fill="rgba(255,255,255,0.12)"/>`;
+    }
+  } else if (obj.id === 'shed') {
+    if (jagged) {
+      shape = `<polygon points="35,95 35,90 40,90 40,60 45,60 45,55 50,55 50,50 55,50 60,45 65,45 70,45 75,50 80,50 85,55 90,55 95,60 100,60 100,90 105,90 105,95" fill="${obj.color}" opacity="0.85"/>`;
+    } else {
+      shape = `<path d="M35,95 L35,60 L70,42 L105,60 L105,95Z" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<rect x="58" y="72" width="24" height="23" rx="2" fill="rgba(255,255,255,0.12)"/>`;
+    }
+  } else if (obj.id === 'well') {
+    if (jagged) {
+      shape = `<polygon points="45,95 45,90 50,90 50,80 55,80 55,75 60,75 60,70 90,70 90,75 95,75 95,80 100,80 100,90 105,90 105,95" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<polygon points="55,70 55,65 60,65 60,50 65,50 65,45 75,45 80,45 85,50 85,65 90,65 90,70" fill="${obj.color}" opacity="0.65"/>`;
+    } else {
+      shape = `<ellipse cx="75" cy="88" rx="30" ry="10" fill="${obj.color}" opacity="0.85"/>`;
+      shape += `<rect x="45" y="75" width="60" height="14" rx="3" fill="${obj.color}" opacity="0.75"/>`;
+      shape += `<rect x="60" y="42" width="6" height="36" rx="2" fill="${obj.color}" opacity="0.6"/>`;
+      shape += `<rect x="84" y="42" width="6" height="36" rx="2" fill="${obj.color}" opacity="0.6"/>`;
+      shape += `<rect x="55" y="40" width="40" height="6" rx="2" fill="${obj.color}" opacity="0.7"/>`;
+      shape += `<rect x="72" y="30" width="6" height="14" rx="2" fill="${obj.color}" opacity="0.5"/>`;
+      shape += `<polygon points="65,32 75,22 85,32" fill="${obj.color}" opacity="0.5"/>`;
+    }
+  } else {
+    shape = `<rect x="58" y="48" width="24" height="24" fill="${obj.color}" opacity="0.6" rx="${jagged ? 0 : 2}"/>`;
+  }
+
+  return `<svg viewBox="0 0 140 110" class="svg-scene">${shape}</svg>`;
+}
+
+function drawNoiseDots() {
+  let dots = '';
+  for (let i = 0; i < 8; i++) {
+    const x = 5 + Math.random() * 140;
+    const y = 5 + Math.random() * 100;
+    dots += `<div class="noise-dot" style="left:${x}px;top:${y}px"></div>`;
+  }
+  return `<div class="noise-dots">${dots}</div>`;
+}
+
+function renderPhase(phase) {
+  currentPhase = phase;
+  const p = phases[phase];
+  document.getElementById('phaseLabel').textContent = p.label;
+  document.getElementById('phaseTitle').textContent = p.title;
+  document.getElementById('phaseDesc').textContent = p.desc;
+
+  document.querySelectorAll('.phase-dot').forEach((dot, i) => {
+    dot.className = 'phase-dot';
+    if (i < phase) dot.classList.add('done');
+    if (i === phase) dot.classList.add('active');
+  });
+
+  document.querySelectorAll('.controls .btn:not(.play)').forEach((btn, i) => {
+    btn.classList.toggle('active', i === phase);
+  });
+
+  const grid = document.getElementById('pixelGrid');
+  let html = '';
+
+  const showObjs = p.showAll ? objects :
+    (phase === 0 ? objects : objects.filter(o => o.id !== 'noise' || p.showNoise));
+
+  const visibleObjs = phase >= 2 ? showObjs.filter(o => o.id !== 'noise') : showObjs;
+
+  visibleObjs.forEach(obj => {
+    let cardClass = 'obj-card fade-up';
+    if (p.classified) {
+      cardClass += obj.accepted ? ' accepted' : ' rejected';
+    }
+
+    let stats = '';
+    if (p.stats) {
+      stats += `Area: ${obj.area} m²<br>`;
+      stats += `L/W: ${obj.lw}<br>`;
+      stats += `Compact: ${(4 * Math.PI * obj.area / Math.pow(Math.sqrt(obj.area * 4) * (1 + 1/obj.lw), 2)).toFixed(2)}`;
+    }
+    if (p.enriched) {
+      stats += `<br>nDSM: ${obj.ndsm} m`;
+      stats += `<br>Therm: ${obj.therm}°C`;
+    }
+
+    let badge = '';
+    if (p.classified) {
+      if (obj.accepted) {
+        badge = `<div class="obj-badge show" style="background:var(--green)">&#10003; Building</div>`;
+      } else {
+        badge = `<div class="obj-badge show" style="background:var(--red)">${obj.reason}</div>`;
+      }
+    }
+
+    html += `
+      <div class="${cardClass}" style="animation-delay: ${visibleObjs.indexOf(obj) * 0.1}s">
+        <div class="obj-visual">
+          ${drawSVGBuilding(obj, phase)}
+          ${p.showNoise && (obj.id === 'house' || obj.id === 'shed') ? drawNoiseDots() : ''}
+        </div>
+        <div class="obj-name">${obj.name}</div>
+        <div class="obj-stats">${stats}</div>
+        ${badge}
+      </div>
+    `;
+  });
+
+  if (p.final) {
+    html += `
+      <div class="obj-card fade-up" style="animation-delay: 0.4s; width: 220px;">
+        <div style="padding: 20px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border);">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--accent); margin-bottom: 10px;">OUTPUT FILES</div>
+          <div style="font-size: 0.82rem; line-height: 2; color: var(--text-dim);">
+            &#128196; building_results.shp<br>
+            &#128205; building_points.shp<br>
+            &#128203; building_log.json
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  grid.innerHTML = html;
+}
+
+function goPhase(n) {
+  playing = false;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Play Animation';
+  renderPhase(n);
+}
+
+async function playAll() {
+  if (playing) {
+    playing = false;
+    document.getElementById('btnPlay').innerHTML = '&#9654; Play Animation';
+    return;
+  }
+  playing = true;
+  document.getElementById('btnPlay').innerHTML = '&#9632; Stop';
+
+  for (let i = 0; i < phases.length; i++) {
+    if (!playing) break;
+    renderPhase(i);
+    await new Promise(r => setTimeout(r, i === 0 ? 1500 : 2200));
+  }
+  playing = false;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Replay';
+}
+
+buildPhaseBar();
+renderPhase(0);
+</script>
+</body>
+</html>

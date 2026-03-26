@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PostProcessing Toolbox — Interactive Documentation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap');
+  :root{--bg:#0a0f1a;--surface:#111827;--surface2:#1a2235;--border:#2a3550;--text:#e2e8f0;--dim:#8896b3;--accent:#38bdf8;--purple:#c084fc;--green:#34d399;--amber:#fbbf24;--coral:#fb7185;--blue:#60a5fa;--pink:#f472b6}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  .hero{text-align:center;padding:60px 20px 40px}
+  .hero h1{font-size:clamp(1.6rem,5vw,2.4rem);font-weight:700;background:linear-gradient(135deg,var(--purple),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p{color:var(--dim);margin-top:8px;font-size:1rem;font-weight:300}
+  .badge{display:inline-block;margin-top:14px;padding:4px 14px;border-radius:20px;font-size:.72rem;font-family:'JetBrains Mono',monospace;background:rgba(192,132,252,.1);color:var(--purple);border:1px solid rgba(192,132,252,.2)}
+  .wrap{max-width:900px;margin:0 auto;padding:0 20px 60px}
+  .section-title{font-size:1.1rem;font-weight:700;margin:32px 0 16px;color:var(--text)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;text-decoration:none;color:var(--text);transition:all .25s;position:relative;overflow:hidden}
+  .card:hover{border-color:var(--purple);transform:translateY(-2px)}
+  .card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(192,132,252,.03),transparent 70%);pointer-events:none}
+  .card .icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;margin-bottom:12px}
+  .card h3{font-size:.95rem;font-weight:600;margin-bottom:6px}
+  .card p{font-size:.82rem;color:var(--dim);line-height:1.6;font-weight:300}
+  .card .tag{display:inline-block;margin-top:10px;padding:3px 10px;border-radius:12px;font-size:.65rem;font-family:'JetBrains Mono',monospace}
+  .overview-card{grid-column:1/-1}
+  .footer{text-align:center;padding:30px;font-size:.72rem;color:var(--dim);font-weight:300;border-top:1px solid var(--border)}
+  a{color:inherit}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>PostProcessing Toolbox</h1>
+  <p>Interactive documentation for the land cover post-processing suite</p>
+  <div class="badge">DeepLabV3 + PointRend · ResNet-101 · MicaSense Altum-PT · ArcGIS Pro 3.6</div>
+</div>
+
+<div class="wrap">
+  <div class="section-title">Overview</div>
+  <div class="grid">
+    <a href="toolbox-guide.html" class="card overview-card">
+      <div class="icon" style="background:rgba(192,132,252,.12);color:var(--purple)">T</div>
+      <h3>Complete toolbox guide</h3>
+      <p>All 4 tools in one interactive page. Shared pipeline overview, tool comparison table, and deep-dives into Watershed crown separation, Grid splitting, and Voronoi medial axis centerlines.</p>
+      <span class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">Start here</span>
+    </a>
+  </div>
+
+  <div class="section-title">Pipeline animations</div>
+  <div class="grid">
+    <a href="vehicle-pipeline.html" class="card">
+      <div class="icon" style="background:rgba(96,165,250,.12);color:var(--blue)">V</div>
+      <h3>Vehicle analysis</h3>
+      <p>Step-by-step animation of vehicle detection: extraction, simplification, area + L/W classification.</p>
+      <span class="tag" style="background:rgba(96,165,250,.1);color:var(--blue)">Interactive</span>
+    </a>
+    <a href="building-pipeline.html" class="card">
+      <div class="icon" style="background:rgba(251,113,133,.12);color:var(--coral)">B</div>
+      <h3>Building analysis</h3>
+      <p>Building footprint regularization with right-angle enforcement and nDSM height classification.</p>
+      <span class="tag" style="background:rgba(251,113,133,.1);color:var(--coral)">Interactive</span>
+    </a>
+    <a href="tree-pipeline.html" class="card">
+      <div class="icon" style="background:rgba(52,211,153,.12);color:var(--green)">T</div>
+      <h3>Tree analysis</h3>
+      <p>Crown detection with PAEK smoothing and optional Watershed or Grid crown separation.</p>
+      <span class="tag" style="background:rgba(52,211,153,.1);color:var(--green)">Interactive</span>
+    </a>
+    <a href="road-pipeline.html" class="card">
+      <div class="icon" style="background:rgba(251,191,36,.12);color:var(--amber)">R</div>
+      <h3>Road analysis</h3>
+      <p>Road network extraction with Voronoi medial axis centerlines, dissolve, and nDSM ceiling classification.</p>
+      <span class="tag" style="background:rgba(251,191,36,.1);color:var(--amber)">Interactive</span>
+    </a>
+  </div>
+
+  <div class="section-title">Source code</div>
+  <div class="grid">
+    <a href="https://github.com/Nickkoro21/PostProcessing-Toolbox" class="card" style="grid-column:1/-1">
+      <h3>GitHub repository</h3>
+      <p>Full source code, installation instructions, and documentation. MIT License.</p>
+      <span class="tag" style="background:rgba(56,189,248,.1);color:var(--accent)">github.com</span>
+    </a>
+  </div>
+</div>
+
+<div class="footer">
+  Nikolaos Koroniadis · MSc Geography and Applied Geoinformatics · University of the Aegean<br>
+  Remote Sensing &amp; GIS Research Group · 2025-2026
+</div>
+
+</body>
+</html>

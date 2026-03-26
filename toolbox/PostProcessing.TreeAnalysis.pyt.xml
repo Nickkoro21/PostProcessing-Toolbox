@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<metadata xml:lang="en">
+	<Esri>
+		<CreaDate>20260321</CreaDate>
+		<CreaTime>18000000</CreaTime>
+		<ArcGISFormat>1.0</ArcGISFormat>
+		<SyncOnce>TRUE</SyncOnce>
+	</Esri>
+	<tool name="TreeAnalysis" displayname="3. Tree Analysis" toolboxalias="PostProc">
+		<summary>
+      Tree crown detection and analysis pipeline.
+      Extracts tree-class pixels, smooths polygon boundaries with PAEK,
+      optionally separates merged canopies (Watershed or Grid — mutually
+      exclusive), computes geometry and zonal statistics, and classifies
+      features by area and nDSM height thresholds.
+    </summary>
+		<usage>
+      1. Provide the classified raster and select the Tree class value.
+      2. Provide the nDSM raster (height above ground in meters).
+      3. Optionally provide a thermal raster for temperature enrichment.
+      4. Choose Crown Separation Method:
+         - None (default): no crown separation.
+         - Watershed: nDSM-based ITCD for polygons above Min Area threshold.
+           Only polygons with 3+ detected peaks are split.
+         - Grid: fishnet overlay for simple deterministic splitting.
+      5. Set classification thresholds for area and nDSM height.
+      6. Output: tree_results.shp, tree_points.shp, tree_log.json.
+    </usage>
+		<parameters>
+			<param name="in_classified" displayname="Classified Raster" datatype="GPRasterLayer" direction="Input" type="Required">
+				<dialogReference>Single-band integer raster from the DeepLabV3 model.</dialogReference>
+			</param>
+			<param name="tree_class" displayname="Tree Class Value" datatype="GPLong" direction="Input" type="Required">
+				<dialogReference>Integer value representing the Tree class.</dialogReference>
+			</param>
+			<param name="in_ndsm" displayname="nDSM Raster (m)" datatype="GPRasterLayer" direction="Input" type="Required">
+				<dialogReference>Normalised Digital Surface Model (height above ground, meters).</dialogReference>
+			</param>
+			<param name="in_thermal" displayname="Thermal Raster (°C)" datatype="GPRasterLayer" direction="Input" type="Optional">
+				<dialogReference>Surface temperature raster in degrees Celsius.</dialogReference>
+			</param>
+			<param name="in_aoi" displayname="Area of Interest" datatype="Multiple" direction="Input" type="Optional">
+				<dialogReference>Optional clip boundary for analysis area.</dialogReference>
+			</param>
+			<param name="out_crs" displayname="Output Coordinate System" datatype="GPCoordinateSystem" direction="Input" type="Optional">
+				<dialogReference>CRS for output shapefiles. Defaults to classified raster CRS.</dialogReference>
+			</param>
+			<param name="cell_size_option" displayname="Processing Cell Size" datatype="GPString" direction="Input" type="Required">
+				<dialogReference>Cell size for raster processing.</dialogReference>
+			</param>
+			<param name="cell_size_custom" displayname="Custom Cell Size (m)" datatype="GPDouble" direction="Input" type="Optional">
+				<dialogReference>Custom cell size, used when "Custom" is selected.</dialogReference>
+			</param>
+			<param name="min_area" displayname="Minimum Tree Crown Area (m²)" datatype="GPDouble" direction="Input" type="Required">
+				<dialogReference>Polygons smaller than this are rejected. Default: 2.0 m².</dialogReference>
+			</param>
+			<param name="max_area" displayname="Maximum Tree Crown Area (m²)" datatype="GPDouble" direction="Input" type="Required">
+				<dialogReference>Polygons larger than this are rejected. Default: 260 m².</dialogReference>
+			</param>
+			<param name="min_ndsm" displayname="Minimum nDSM Height (m)" datatype="GPDouble" direction="Input" type="Required">
+				<dialogReference>Minimum mean nDSM to classify as tree. Default: 1.0 m.</dialogReference>
+			</param>
+			<param name="reject_null_ndsm" displayname="Reject Features with NULL nDSM" datatype="GPBoolean" direction="Input" type="Required">
+				<dialogReference>If checked, features with no nDSM coverage are rejected.</dialogReference>
+			</param>
+			<param name="majority_neighborhood" displayname="Majority Filter Neighborhood" datatype="GPString" direction="Input" type="Required">
+				<dialogReference>FOUR, EIGHT, or Skip.</dialogReference>
+			</param>
+			<param name="majority_passes" displayname="Majority Filter Passes" datatype="GPLong" direction="Input" type="Required">
+				<dialogReference>Number of MajorityFilter passes (1-5).</dialogReference>
+			</param>
+			<param name="smooth_tol" displayname="Smooth Tolerance (m) — PAEK" datatype="GPDouble" direction="Input" type="Required">
+				<dialogReference>PAEK smoothing tolerance. Default: 0.30 m.</dialogReference>
+			</param>
+			<param name="crown_method" displayname="Crown Separation Method" datatype="GPString" direction="Input" type="Required">
+				<dialogReference>
+          None: no crown separation (default).
+          Watershed: nDSM-based Individual Tree Crown Delineation.
+            Applied ONLY to polygons larger than "Min Area for Watershed".
+            Uses local maxima detection with prominence filtering.
+            Polygons with fewer than 3 detected peaks remain intact.
+          Grid: simple fishnet overlay for deterministic splitting.
+          Watershed and Grid are mutually exclusive.
+        </dialogReference>
+			</param>
+			<param name="ws_min_area" displayname="Min Area for Watershed (m²)" datatype="GPDouble" direction="Input" type="Optional">
+				<dialogReference>
+          Only polygons larger than this area are processed by watershed.
+          Smaller polygons are kept untouched. Default: 120 m².
+          Enabled only when Crown Separation = Watershed.
+        </dialogReference>
+			</param>
+			<param name="ws_search_radius" displayname="Watershed Search Radius (m)" datatype="GPDouble" direction="Input" type="Optional">
+				<dialogReference>
+          Radius in meters for local maxima (tree-top) detection.
+          Larger values find fewer, more distinct peaks.
+          Default: 6.0 m. Typical range: 3-10 m depending on tree size.
+          Enabled only when Crown Separation = Watershed.
+        </dialogReference>
+			</param>
+			<param name="grid_size" displayname="Grid Cell Size (m)" datatype="GPDouble" direction="Input" type="Optional">
+				<dialogReference>
+          Fishnet cell size in meters. Should approximate expected
+          single-tree crown diameter. Default: 5.0 m.
+          Enabled only when Crown Separation = Grid.
+        </dialogReference>
+			</param>
+			<param name="do_centroids" displayname="Generate Centroid Points" datatype="GPBoolean" direction="Input" type="Required">
+				<dialogReference>Generate centroid point shapefile for tree inventory.</dialogReference>
+			</param>
+			<param name="out_folder" displayname="Output Folder" datatype="DEFolder" direction="Input" type="Required">
+				<dialogReference>Root output folder. A "trees" subfolder is created.</dialogReference>
+			</param>
+		</parameters>
+	</tool>
+</metadata>

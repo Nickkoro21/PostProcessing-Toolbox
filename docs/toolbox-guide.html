@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PostProcessing Toolbox — Land Cover Analysis Suite</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=JetBrains+Mono:wght@400;600&display=swap');
+  :root{--bg:#0a0f1a;--surface:#111827;--surface2:#1a2235;--border:#2a3550;--text:#e2e8f0;--dim:#8896b3;--accent:#38bdf8;--purple:#c084fc;--green:#34d399;--red:#f87171;--orange:#fb923c;--amber:#fbbf24;--pink:#f472b6;--blue:#60a5fa;--teal:#2dd4bf;--coral:#fb7185}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+  .header{text-align:center;padding:32px 20px 10px}
+  .header h1{font-size:clamp(1.4rem,4vw,2rem);font-weight:700;background:linear-gradient(135deg,var(--purple),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.02em}
+  .header p{font-size:.9rem;color:var(--dim);margin-top:6px;font-weight:300}
+  .badge{display:inline-block;margin-top:10px;padding:3px 12px;border-radius:20px;font-size:.7rem;font-family:'JetBrains Mono',monospace;background:rgba(192,132,252,.1);color:var(--purple);border:1px solid rgba(192,132,252,.2)}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  .tabs{display:flex;gap:4px;justify-content:center;margin-bottom:20px;flex-wrap:wrap}
+  .tab{font-family:'DM Sans',sans-serif;padding:8px 18px;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:500;transition:all .2s}
+  .tab:hover{background:var(--surface2);border-color:var(--purple)}
+  .tab.active{background:var(--purple);color:var(--bg);border-color:var(--purple)}
+  .tab-content{display:none}
+  .tab-content.active{display:block;animation:fadeIn .4s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:16px;position:relative;overflow:hidden}
+  .card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(192,132,252,.02),transparent 60%);pointer-events:none}
+  .card h2{font-size:1.15rem;font-weight:700;margin-bottom:6px}
+  .card h3{font-size:.85rem;color:var(--purple);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;font-family:'JetBrains Mono',monospace}
+  .card p,.card li{font-size:.86rem;color:var(--dim);line-height:1.7;font-weight:300}
+  .card code{font-family:'JetBrains Mono',monospace;font-size:.76rem;background:var(--surface2);padding:2px 6px;border-radius:4px;color:var(--accent)}
+  .card ul{list-style:none;padding-left:0}
+  .card li::before{content:'›';color:var(--purple);margin-right:8px;font-weight:700}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:16px}
+  .mini{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;transition:border-color .2s}
+  .mini:hover{border-color:var(--purple)}
+  .mini .label{font-family:'JetBrains Mono',monospace;font-size:.72rem;margin-bottom:4px}
+  .mini .val{font-size:.82rem;color:var(--dim);line-height:1.5}
+  .phase-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:8px 12px;border-radius:8px;background:var(--surface2);transition:all .2s;cursor:default;font-size:.84rem}
+  .phase-row:hover{background:rgba(192,132,252,.08)}
+  .phase-row .num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:.68rem;font-weight:600;flex-shrink:0}
+  .phase-row .txt{flex:1;color:var(--dim);font-weight:300}
+  .phase-row .txt b{color:var(--text);font-weight:500}
+  .shared .num{background:rgba(192,132,252,.15);color:var(--purple)}
+  .specific .num{color:var(--bg)}
+  .optional .num{background:none;border:1.5px dashed}
+  .divider{height:1px;background:var(--border);margin:16px 0}
+  .tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.65rem;font-family:'JetBrains Mono',monospace;margin-left:auto;flex-shrink:0}
+  .expand-btn{background:none;border:1px solid var(--border);color:var(--dim);padding:6px 14px;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:.8rem;transition:all .2s;margin-top:10px}
+  .expand-btn:hover{border-color:var(--purple);color:var(--text)}
+  .expandable{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .expandable.open{display:block;animation:fadeIn .3s ease}
+  .svg-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin:12px 0}
+  .svg-box svg{width:100%;height:auto}
+  .field-table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:8px}
+  .field-table th{text-align:left;padding:6px 10px;background:var(--surface2);color:var(--purple);font-family:'JetBrains Mono',monospace;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
+  .field-table td{padding:6px 10px;border-bottom:1px solid rgba(42,53,80,.4);color:var(--dim)}
+  .field-table tr:hover td{background:rgba(192,132,252,.03)}
+  .field-table .v{color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:.76rem}
+  .tool-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .tool-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;flex-shrink:0}
+  .tool-meta{flex:1}
+  .tool-meta h2{margin-bottom:2px}
+  .tool-meta p{font-size:.82rem;color:var(--dim);font-weight:300}
+  .step-vis{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin:16px 0}
+  .step-box{padding:6px 12px;border-radius:6px;font-size:.72rem;font-family:'JetBrains Mono',monospace;text-align:center;border:1px solid;min-width:80px}
+  .step-arrow{color:var(--dim);font-size:.9rem}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.72rem;color:var(--dim);margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+  .legend-item{display:flex;align-items:center;gap:5px}
+  .legend-dot{width:10px;height:10px;border-radius:3px}
+  @media(max-width:600px){.grid2,.grid4{grid-template-columns:1fr}.step-vis{flex-direction:column}.step-arrow{transform:rotate(90deg)}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>PostProcessing Toolbox</h1>
+  <p>Land cover post-processing suite for semantic segmentation outputs</p>
+  <div class="badge">DeepLabV3 + PointRend · ResNet-101 · MicaSense Altum-PT</div>
+</div>
+
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('overview')">Overview</button>
+    <button class="tab" onclick="showTab('vehicle')" style="border-left:3px solid var(--blue)">1. Vehicle</button>
+    <button class="tab" onclick="showTab('building')" style="border-left:3px solid var(--coral)">2. Building</button>
+    <button class="tab" onclick="showTab('tree')" style="border-left:3px solid var(--green)">3. Tree</button>
+    <button class="tab" onclick="showTab('road')" style="border-left:3px solid var(--amber)">4. Road</button>
+  </div>
+
+  <!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+  <div class="tab-content active" id="tab-overview">
+    <div class="card">
+      <h3>Architecture</h3>
+      <h2>Modular pipeline with shared core</h2>
+      <p>All 4 tools share a common raster-to-vector pipeline (phases 0-3, 5-6, 8) implemented in <code>_postproc_common.py</code>. Each tool adds domain-specific phases (4 and 7) via its own core module. The UI and parameter logic live in <code>PostProcessing.pyt</code>.</p>
+      <div class="grid4" style="margin-top:16px">
+        <div class="mini"><div class="label" style="color:var(--accent)">PostProcessing.pyt</div><div class="val">UI + parameters for all 4 tools. 1,841 lines.</div></div>
+        <div class="mini"><div class="label" style="color:var(--purple)">_postproc_common.py</div><div class="val">Shared phases 0,1,2,3,5,6,8. 870 lines.</div></div>
+        <div class="mini"><div class="label" style="color:var(--blue)">_vehicle_core.py</div><div class="val">Simplify + area/L/W classify. 289 lines.</div></div>
+        <div class="mini"><div class="label" style="color:var(--coral)">_building_core.py</div><div class="val">Regularize + area/nDSM classify. 330 lines.</div></div>
+        <div class="mini"><div class="label" style="color:var(--green)">_tree_core.py</div><div class="val">Smooth + crown separation + classify. 614 lines.</div></div>
+        <div class="mini"><div class="label" style="color:var(--amber)">_road_core.py</div><div class="val">Simplify+dissolve + centerlines. 1,221 lines.</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Shared pipeline</h3>
+      <h2>Phases that every tool runs</h2>
+      <div class="phase-row shared"><div class="num">0</div><div class="txt"><b>Validate inputs</b> — CRS check, cell size, AOI extent, overlap</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="phase-row shared"><div class="num">1</div><div class="txt"><b>Extract class pixels</b> — Con(VALUE = target, 1, 0) binary raster</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="phase-row shared"><div class="num">2</div><div class="txt"><b>Majority filter</b> — FOUR / EIGHT / Skip, 1-5 passes</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="phase-row shared"><div class="num">3</div><div class="txt"><b>Vectorize</b> — RasterToPolygon, NO_SIMPLIFY, SINGLE_OUTER_PART</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="divider"></div>
+      <div class="phase-row specific"><div class="num" style="background:var(--dim)">4</div><div class="txt"><b>Shape refinement</b> — tool-specific (see each tool tab)</div><div class="tag" style="background:rgba(136,150,179,.1);color:var(--dim)">varies</div></div>
+      <div class="divider"></div>
+      <div class="phase-row shared"><div class="num">5</div><div class="txt"><b>Geometry + MBR</b> — Area, Perimeter, MBR L/W/Azimuth, L/W ratio</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="phase-row shared"><div class="num">6</div><div class="txt"><b>Enrichment</b> — Sequential ID, Compactness, ZonalStats nDSM + thermal</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="divider"></div>
+      <div class="phase-row specific"><div class="num" style="background:var(--dim)">7</div><div class="txt"><b>Classification</b> — tool-specific accept/reject rules</div><div class="tag" style="background:rgba(136,150,179,.1);color:var(--dim)">varies</div></div>
+      <div class="divider"></div>
+      <div class="phase-row shared"><div class="num">8</div><div class="txt"><b>Export</b> — CopyFeatures, centroids, JSON log, summary stats</div><div class="tag" style="background:rgba(192,132,252,.1);color:var(--purple)">common</div></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Shared (_postproc_common.py)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--dim)"></div>Tool-specific (_*_core.py)</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Tool comparison</h3>
+      <h2>What makes each tool unique</h2>
+      <table class="field-table">
+        <tr><th>Aspect</th><th>Vehicle</th><th>Building</th><th>Tree</th><th>Road</th></tr>
+        <tr><td>Phase 4</td><td>SimplifyPolygon</td><td>RegularizeFootprint</td><td>SmoothPolygon (PAEK)</td><td>Simplify + Dissolve</td></tr>
+        <tr><td>Phase 4.5</td><td>—</td><td>—</td><td class="v">Watershed / Grid</td><td>—</td></tr>
+        <tr><td>Phase 7</td><td>Area + L/W ratio</td><td>Area + nDSM min</td><td>Area + nDSM min</td><td>Area + nDSM max + MBR</td></tr>
+        <tr><td>Phase 7.5</td><td>—</td><td>—</td><td>—</td><td class="v">Voronoi centerlines</td></tr>
+        <tr><td>nDSM logic</td><td>Informational only</td><td>Floor (min height)</td><td>Floor (min height)</td><td>Ceiling (max height)</td></tr>
+        <tr><td>Outputs</td><td>Polygons + points</td><td>Polygons + points</td><td>Polygons + points</td><td>Polygons + centerlines + points</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Requirements</h3>
+      <h2>ArcGIS Pro extensions and dependencies</h2>
+      <div class="grid2">
+        <div class="mini"><div class="label" style="color:var(--green)">Required</div><div class="val">Spatial Analyst + 3D Analyst extensions. ArcGIS Pro 3.6+.</div></div>
+        <div class="mini"><div class="label" style="color:var(--amber)">Optional (Road centerlines)</div><div class="val">shapely, scipy, networkx, numpy — for Voronoi medial axis. Falls back to Thin if missing.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ VEHICLE ═══════════════════ -->
+  <div class="tab-content" id="tab-vehicle">
+    <div class="card">
+      <div class="tool-header">
+        <div class="tool-icon" style="background:rgba(96,165,250,.12);color:var(--blue)">V</div>
+        <div class="tool-meta"><h2>Vehicle analysis</h2><p>Detect and classify vehicle features by area and length/width ratio</p></div>
+      </div>
+      <div class="step-vis">
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 0-3<br>Shared</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.3);color:var(--blue)">Ph 4<br>Simplify</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 5-6<br>Geom+Enrich</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.3);color:var(--blue)">Ph 7<br>Classify</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 8<br>Export</div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Phase 4 — Simplify</h3>
+        <p><code>SimplifyPolygon</code> with POINT_REMOVE algorithm. Removes the pixel-staircase effect from raw vectorized polygons. The tolerance (default 0.10 m) controls how aggressively vertices are removed. Collapsed polygons (too small to survive simplification) are counted but not kept.</p>
+      </div>
+      <div class="card">
+        <h3>Phase 7 — Classification</h3>
+        <p>Three criteria, applied in order:</p>
+        <ul>
+          <li><b>Area below min</b> (default 1.5 m²) — too small for a vehicle</li>
+          <li><b>Area above max</b> (default 12 m²) — likely a building or merged blob</li>
+          <li><b>L/W ratio below min</b> (default 1.5) — too square, not vehicle-shaped</li>
+        </ul>
+        <p style="margin-top:8px">Reference sizes: motorcycle 1.5-2.5 m², car 5-9 m², SUV 9-12 m².</p>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Output fields</h3>
+      <table class="field-table">
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td class="v">VehicleID</td><td>Long</td><td>Sequential identifier</td></tr>
+        <tr><td class="v">Area_m2</td><td>Double</td><td>Polygon area in square meters</td></tr>
+        <tr><td class="v">LW_Ratio</td><td>Double</td><td>MBR length / width ratio</td></tr>
+        <tr><td class="v">MEAN_nDSM</td><td>Double</td><td>Mean height above ground (m)</td></tr>
+        <tr><td class="v">Class</td><td>Text</td><td>Vehicle or Rejected possible vehicle</td></tr>
+        <tr><td class="v">Reason</td><td>Text</td><td>Area_below_min, Area_above_max, LW_below_min, or empty</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ BUILDING ═══════════════════ -->
+  <div class="tab-content" id="tab-building">
+    <div class="card">
+      <div class="tool-header">
+        <div class="tool-icon" style="background:rgba(251,113,133,.12);color:var(--coral)">B</div>
+        <div class="tool-meta"><h2>Building analysis</h2><p>Extract and regularize building footprints with height-based classification</p></div>
+      </div>
+      <div class="step-vis">
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 0-3<br>Shared</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.3);color:var(--coral)">Ph 4<br>Regularize</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 5-6<br>Geom+Enrich</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.3);color:var(--coral)">Ph 7<br>Classify</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 8<br>Export</div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Phase 4 — Regularize footprint</h3>
+        <p><code>RegularizeBuildingFootprint</code> from ArcGIS 3D Analyst enforces architectural geometry. Three methods available:</p>
+        <ul>
+          <li><b>RIGHT_ANGLES</b> — orthogonal edges (default, most buildings)</li>
+          <li><b>RIGHT_ANGLES_AND_DIAGONALS</b> — allows 45-degree walls</li>
+          <li><b>ANY_ANGLE</b> — preserves organic shapes</li>
+        </ul>
+        <p style="margin-top:8px">Tolerance (default 0.20 m) controls edge straightening aggressiveness.</p>
+      </div>
+      <div class="card">
+        <h3>Phase 7 — Classification</h3>
+        <p>Four criteria with <b>minimum nDSM height</b> (floor logic — buildings must be elevated):</p>
+        <ul>
+          <li><b>Area below min</b> (default 5 m²) — too small for a building</li>
+          <li><b>Area above max</b> (default 1000 m²) — likely a merged block</li>
+          <li><b>nDSM is NULL</b> — reject or keep with warning (configurable)</li>
+          <li><b>nDSM below min</b> (default 1.0 m) — too flat, not a building</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ TREE ═══════════════════ -->
+  <div class="tab-content" id="tab-tree">
+    <div class="card">
+      <div class="tool-header">
+        <div class="tool-icon" style="background:rgba(52,211,153,.12);color:var(--green)">T</div>
+        <div class="tool-meta"><h2>Tree analysis</h2><p>Crown detection with optional watershed or grid-based separation</p></div>
+      </div>
+      <div class="step-vis">
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 0-3<br>Shared</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:var(--green)">Ph 4<br>Smooth</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.3);color:var(--green);border-style:dashed">Ph 4.5<br>Crown sep.</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 5-7<br>Classify</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 8<br>Export</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Phase 4 — Smooth polygons</h3>
+      <p><code>SmoothPolygon</code> with the PAEK algorithm produces organic, naturally curved crown shapes — unlike the angular SimplifyPolygon used for vehicles. The tolerance (default 0.30 m) controls curve tightness. Tree crowns are round in nature, so PAEK smoothing matches their actual shape better than point-removal.</p>
+    </div>
+
+    <div class="card">
+      <h3>Phase 4.5 — Crown separation (optional)</h3>
+      <h2>Splitting merged canopy polygons into individual trees</h2>
+      <p style="margin-bottom:12px">When trees grow close together, their crowns merge into large polygons in the classified raster. Three options are available (mutually exclusive):</p>
+
+      <div class="grid2" style="margin-bottom:0">
+        <div class="mini" style="border-color:rgba(52,211,153,.3)">
+          <div class="label" style="color:var(--green)">Option 1: None (default)</div>
+          <div class="val">No crown separation. Each polygon = one tree or merged group. Best for sparse canopy.</div>
+        </div>
+        <div class="mini" style="border-color:rgba(52,211,153,.3)">
+          <div class="label" style="color:var(--green)">Option 2: Watershed</div>
+          <div class="val">nDSM-based individual tree crown detection (ITCD). Uses local maxima as seed points.</div>
+        </div>
+        <div class="mini" style="border-color:rgba(52,211,153,.3)">
+          <div class="label" style="color:var(--green)">Option 3: Grid</div>
+          <div class="val">Simple fishnet overlay + Intersect. Deterministic, no nDSM needed. Good for uniform canopy.</div>
+        </div>
+      </div>
+
+      <button class="expand-btn" onclick="toggle('ws-detail')">Show watershed details</button>
+      <div class="expandable" id="ws-detail">
+        <h3>Watershed crown separation — how it works</h3>
+        <p>This is a marker-controlled watershed segmentation using the nDSM to find individual tree peaks. It runs <b>only on large polygons</b> (above a configurable area threshold, default 120 m²) because small polygons are likely individual trees already.</p>
+        <div class="step-vis" style="flex-wrap:wrap">
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Mask nDSM<br>to large polygons</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Smooth nDSM<br>focal mean</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Invert<br>(Negate)</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Local maxima<br>+ prominence</div>
+        </div>
+        <div class="step-vis" style="flex-wrap:wrap">
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Label seeds<br>RegionGroup</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">FlowDirection<br>+ Watershed</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Vectorize<br>zones</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green);min-width:110px">Intersect<br>clip to original</div>
+        </div>
+        <div style="margin-top:12px">
+          <h3 style="margin-bottom:6px">Key design decisions</h3>
+          <ul>
+            <li><b>Prominence filter</b>: A peak must rise at least 2 m above the local minimum within the search radius. This prevents false peaks from minor nDSM undulations.</li>
+            <li><b>Minimum 3 peaks to split</b>: If a large polygon has fewer than 3 detected peaks, it stays intact — splitting into 2 would create halves, not meaningful crowns.</li>
+            <li><b>Area preservation</b>: Split pieces are clipped to the original polygon boundary, so the total canopy area is exactly preserved.</li>
+          </ul>
+        </div>
+        <table class="field-table" style="margin-top:12px">
+          <tr><th>Parameter</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>Min area for watershed</td><td class="v">120 m²</td><td>Only polygons larger than this are processed</td></tr>
+          <tr><td>Search radius</td><td class="v">6.0 m</td><td>Local maxima detection neighborhood radius</td></tr>
+          <tr><td>Smooth radius</td><td class="v">2.5 m</td><td>Focal mean smoothing before peak detection (hardcoded)</td></tr>
+          <tr><td>Prominence min</td><td class="v">2.0 m</td><td>Peak must rise this much above local min (hardcoded)</td></tr>
+        </table>
+      </div>
+
+      <button class="expand-btn" onclick="toggle('grid-detail')">Show grid details</button>
+      <div class="expandable" id="grid-detail">
+        <h3>Grid splitting — how it works</h3>
+        <p>The simplest approach: a regular fishnet grid (default 5 m cell) is overlaid on all tree polygons, and <code>Intersect</code> splits them at grid boundaries. This is completely deterministic and doesn't use the nDSM for crown detection.</p>
+        <div class="step-vis">
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green)">CreateFishnet<br>grid over extent</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green)">Intersect<br>polygons x grid</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.2);color:var(--green)">Result<br>split pieces</div>
+        </div>
+        <p style="margin-top:8px">Best for: uniform canopy density where the grid cell size approximates average crown diameter. Not recommended when trees have highly variable crown sizes.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ ROAD ═══════════════════ -->
+  <div class="tab-content" id="tab-road">
+    <div class="card">
+      <div class="tool-header">
+        <div class="tool-icon" style="background:rgba(251,191,36,.12);color:var(--amber)">R</div>
+        <div class="tool-meta"><h2>Road analysis</h2><p>Road network extraction with Voronoi medial axis centerlines</p></div>
+      </div>
+      <div class="step-vis">
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 0-3<br>Shared</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:var(--amber)">Ph 4a<br>Simp+Dissolve</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 5-6<br>Geom+Enrich</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:var(--amber)">Ph 7<br>Classify</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(244,114,182,.1);border-color:rgba(244,114,182,.3);color:var(--pink);border-style:dashed">Ph 7.5<br>Centerlines</div>
+        <div class="step-arrow">&rarr;</div>
+        <div class="step-box" style="background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.3);color:var(--purple)">Ph 8<br>Export</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Phase 4a — Simplify + Dissolve</h3>
+        <p>Two steps unique to roads:</p>
+        <ul>
+          <li><b>SimplifyPolygon</b> (POINT_REMOVE, 0.15 m) — removes pixel staircase</li>
+          <li><b>Dissolve</b> (SINGLE_PART) — merges all touching polygons into contiguous road segments</li>
+        </ul>
+        <p style="margin-top:8px">After dissolve, 296 raw fragments might become 45 road segments. This is essential because roads are linear features, not discrete objects.</p>
+      </div>
+      <div class="card">
+        <h3>Phase 7 — Classification</h3>
+        <p>Roads use <b>inverted nDSM logic</b> (ceiling, not floor) plus MBR dimensions:</p>
+        <ul>
+          <li><b>Area below min</b> (2 m²) — noise patch</li>
+          <li><b>nDSM is NULL</b> — reject or keep (configurable)</li>
+          <li><b>nDSM above max</b> (0.5 m) — elevated, not a road</li>
+          <li><b>MBR length below min</b> (3 m) — too short</li>
+          <li><b>MBR width below min</b> (1.5 m) — too narrow</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Phase 7.5 — Voronoi centerline extraction</h3>
+      <h2>Medial axis approach for road centerlines</h2>
+      <p style="margin-bottom:12px">The centerline extraction converts accepted road polygons into polyline features representing the road network. Two methods are available:</p>
+
+      <div class="grid2" style="margin-bottom:12px">
+        <div class="mini" style="border-color:rgba(244,114,182,.3)">
+          <div class="label" style="color:var(--pink)">Primary: Voronoi medial axis</div>
+          <div class="val">Geometrically correct. Handles junctions, bends, and variable widths. Requires shapely, scipy, networkx.</div>
+        </div>
+        <div class="mini" style="border-color:rgba(136,150,179,.2)">
+          <div class="label" style="color:var(--dim)">Fallback: Morphological Thin</div>
+          <div class="val">arcpy-only. Rasterize, Thin, RasterToPolyline, TrimLine. Produces spurs at junctions.</div>
+        </div>
+      </div>
+
+      <button class="expand-btn" onclick="toggle('vor-detail')">Show Voronoi details</button>
+      <div class="expandable" id="vor-detail">
+        <h3>Voronoi centerline — step by step</h3>
+        <p>For each accepted road polygon:</p>
+        <div class="step-vis" style="flex-wrap:wrap">
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">Fill holes<br>&le; 20 m²</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">Densify<br>boundary</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">scipy<br>Voronoi</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">Interior<br>edges only</div>
+        </div>
+        <div class="step-vis" style="flex-wrap:wrap">
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">networkx<br>graph</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">Prune<br>short branches</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">shapely<br>linemerge</div>
+          <div class="step-arrow">&rarr;</div>
+          <div class="step-box" style="background:rgba(244,114,182,.08);border-color:rgba(244,114,182,.2);color:var(--pink);min-width:100px">SpatialJoin<br>+ PAEK smooth</div>
+        </div>
+        <div style="margin-top:16px">
+          <h3 style="margin-bottom:6px">Why Voronoi and not Thin?</h3>
+          <p>The original morphological Thin approach produced excessive spurs at junctions and variable-width sections. The Voronoi medial axis computes the true geometric center of the polygon at every point. Combined with graph-based pruning, it produces clean centerlines that handle intersections natively.</p>
+          <h3 style="margin-top:12px;margin-bottom:6px">Hole filling</h3>
+          <p>Vehicles, shadows, and small misclassified objects sitting inside road polygons create interior holes. The Voronoi medial axis would branch around each hole, producing noisy centerlines. Filling holes smaller than <code>max_hole_area</code> (default 20 m², covering most vehicles at ~12 m²) before computing the medial axis eliminates these artifacts.</p>
+          <h3 style="margin-top:12px;margin-bottom:6px">Graph pruning</h3>
+          <p>After filtering to interior Voronoi edges, short dead-end branches remain along the polygon boundary. The pruning algorithm walks from each degree-1 node (leaf) toward the nearest junction (degree 3+). If the walk distance is shorter than <code>prune_factor x median_road_width</code>, the branch is removed. This repeats iteratively until stable.</p>
+        </div>
+        <table class="field-table" style="margin-top:12px">
+          <tr><th>Parameter</th><th>Default</th><th>Purpose</th></tr>
+          <tr><td>Min centerline length</td><td class="v">5.0 m</td><td>Removes short fragments after extraction</td></tr>
+          <tr><td>Max hole area</td><td class="v">20 m²</td><td>Fill vehicle/shadow holes before Voronoi</td></tr>
+          <tr><td>Prune factor</td><td class="v">2.0x</td><td>Branch pruning = factor x median road width</td></tr>
+          <tr><td>Densify factor</td><td class="v">5.0x</td><td>Boundary sampling = factor x cell size</td></tr>
+          <tr><td>Max boundary pts</td><td class="v">15,000</td><td>Cap to prevent excessive computation (hardcoded)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;padding:24px;font-size:.72rem;color:var(--dim);font-weight:300">
+  Developed by Nikolaos Koroniadis · MSc Geography and Applied Geoinformatics · University of the Aegean<br>
+  Remote Sensing &amp; GIS Research Group · MicaSense Altum-PT · ArcGIS Pro 3.6.2
+</div>
+
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  event.target.classList.add('active');
+}
+function toggle(id){
+  const el=document.getElementById(id);
+  el.classList.toggle('open');
+  const btn=el.previousElementSibling;
+  btn.textContent=el.classList.contains('open')?btn.textContent.replace('Show','Hide'):btn.textContent.replace('Hide','Show');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Road Analysis Pipeline — PostProcessing Toolbox</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0a0f1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #2a3550;
+    --text: #e2e8f0;
+    --text-dim: #8896b3;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --green: #34d399;
+    --red: #f87171;
+    --orange: #fb923c;
+    --yellow: #fbbf24;
+    --road-color: #c084fc;
+    --road-dark: #7c3aed;
+    --asphalt: #374151;
+    --centerline: #f472b6;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 40px 20px 10px;
+  }
+  .header h1 {
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--road-color), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em;
+  }
+  .header p {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-weight: 300;
+  }
+  .header .badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(192,132,252,0.12);
+    color: var(--road-color);
+    border: 1px solid rgba(192,132,252,0.25);
+  }
+
+  .pipeline-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-family: 'DM Sans', sans-serif;
+    padding: 8px 18px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--road-color); }
+  .btn.active { background: var(--road-color); color: var(--bg); border-color: var(--road-color); }
+  .btn.play { background: linear-gradient(135deg, var(--road-color), var(--accent)); color: #fff; border: none; }
+  .btn.play:hover { opacity: 0.9; }
+
+  /* Phase bar */
+  .phase-bar {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .phase-dot {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+  .phase-dot.active { background: var(--road-color); }
+  .phase-dot.done { background: var(--green); }
+
+  /* Scene */
+  .scene {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 30px;
+    min-height: 420px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .scene::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(192,132,252,0.03), transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(56,189,248,0.03), transparent 60%);
+    pointer-events: none;
+  }
+
+  .phase-label {
+    position: absolute;
+    top: 16px;
+    left: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--road-color);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.8;
+  }
+  .phase-title {
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    min-height: 36px;
+  }
+  .phase-desc {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    margin-bottom: 24px;
+    min-height: 22px;
+    font-weight: 300;
+  }
+
+  /* Grid area */
+  .pixel-grid {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 36px;
+    flex-wrap: wrap;
+    min-height: 280px;
+  }
+
+  /* Object card */
+  .obj-card {
+    width: 220px;
+    text-align: center;
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    animation: fadeUp 0.5s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .obj-card.rejected {
+    opacity: 0.3;
+    transform: scale(0.85);
+    filter: grayscale(0.8);
+  }
+  .obj-card.accepted .obj-badge { background: var(--green); }
+  .obj-card.rejected .obj-badge { background: var(--red); }
+
+  .obj-visual {
+    width: 200px;
+    height: 140px;
+    margin: 0 auto 12px;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    transition: all 0.4s;
+    background: var(--surface2);
+  }
+  .obj-card.accepted .obj-visual { border-color: var(--green); box-shadow: 0 0 20px rgba(52,211,153,0.2); }
+  .obj-card.rejected .obj-visual { border-color: var(--red); box-shadow: 0 0 20px rgba(248,113,113,0.15); }
+
+  .obj-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+  }
+  .obj-stats {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .obj-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--bg);
+    margin-top: 8px;
+    transition: all 0.4s;
+    opacity: 0;
+  }
+  .obj-badge.show { opacity: 1; }
+
+  .svg-scene { width: 100%; height: 100%; }
+
+  /* Info panel */
+  .info-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .info-panel h3 {
+    font-size: 0.85rem;
+    color: var(--road-color);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .info-panel p {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+    font-weight: 300;
+  }
+  .info-panel code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  /* Architecture section */
+  .arch-section {
+    margin-top: 32px;
+  }
+  .arch-section h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, var(--road-color), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .file-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    transition: border-color 0.2s;
+  }
+  .file-card:hover { border-color: var(--road-color); }
+  .file-card .fname {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .file-card .fdesc {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .file-card .ftag {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.65rem;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(192,132,252,0.1);
+    color: var(--road-color);
+  }
+
+  /* Param table */
+  .param-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 12px;
+  }
+  .param-table th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--surface2);
+    color: var(--road-color);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+  }
+  .param-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(42,53,80,0.5);
+    color: var(--text-dim);
+  }
+  .param-table tr:hover td { background: rgba(192,132,252,0.03); }
+  .param-table .val { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+  .param-table .cat { color: var(--road-color); font-weight: 600; font-size: 0.75rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Road Analysis Pipeline</h1>
+  <p>PostProcessing Toolbox · Tool 4 of 4 · Voronoi Medial Axis Centerlines</p>
+  <div class="badge">DeepLabV3 + PointRend · ResNet-101 · MicaSense Altum-PT</div>
+</div>
+
+<div class="pipeline-container">
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn play" id="btnPlay" onclick="playAll()">&#9654; Play Animation</button>
+    <button class="btn" onclick="goPhase(0)">Input</button>
+    <button class="btn" onclick="goPhase(1)">Extract</button>
+    <button class="btn" onclick="goPhase(2)">Filter</button>
+    <button class="btn" onclick="goPhase(3)">Vectorize</button>
+    <button class="btn" onclick="goPhase(4)">Simplify</button>
+    <button class="btn" onclick="goPhase(5)">Dissolve</button>
+    <button class="btn" onclick="goPhase(6)">Classify</button>
+    <button class="btn" onclick="goPhase(7)">Voronoi</button>
+    <button class="btn" onclick="goPhase(8)">Output</button>
+  </div>
+
+  <div class="phase-bar" id="phaseBar"></div>
+
+  <!-- Main Scene -->
+  <div class="scene">
+    <div class="phase-label" id="phaseLabel">Phase 0 / 9</div>
+    <div class="phase-title" id="phaseTitle">Classified Raster Input</div>
+    <div class="phase-desc" id="phaseDesc">Raw single-band raster · 7 classes · ~4.5 cm resolution</div>
+    <div class="pixel-grid" id="pixelGrid"></div>
+  </div>
+
+  <!-- Info Panel -->
+  <div class="info-panel" id="infoPanel">
+    <h3>Phase Details</h3>
+    <p id="infoText">Select a phase to see detailed information about each processing step.</p>
+  </div>
+
+  <!-- Architecture -->
+  <div class="arch-section">
+    <h2>Architecture</h2>
+    <div class="file-grid">
+      <div class="file-card">
+        <div class="fname">PostProcessing.pyt</div>
+        <div class="fdesc">UI + parameter logic for all 4 tools. RoadAnalysis class defines 26 parameters including 3 Voronoi centerline controls in a collapsible group.</div>
+        <div class="ftag">UI Layer</div>
+      </div>
+      <div class="file-card">
+        <div class="fname">_postproc_common.py</div>
+        <div class="fdesc">Shared pipeline phases (0,1,2,3,5,6,8): validation, extraction, majority filter, vectorization, geometry, enrichment, export.</div>
+        <div class="ftag">Shared Core</div>
+      </div>
+      <div class="file-card">
+        <div class="fname">_road_core.py</div>
+        <div class="fdesc">Road-specific: Phase 4a (Simplify + Dissolve), Phase 7 (nDSM + L + W classification), Phase 7.5 (Voronoi medial axis centerlines).</div>
+        <div class="ftag">Road Pipeline</div>
+      </div>
+      <div class="file-card">
+        <div class="fname">PostProcessing_RoadAnalysis_pyt.xml</div>
+        <div class="fdesc">ArcGIS Pro metadata: tool summary, usage, and parameter help text for every field in the tool dialog.</div>
+        <div class="ftag">Metadata</div>
+      </div>
+    </div>
+
+    <h2>Centerline Parameters</h2>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Default</th><th>Range</th><th>Purpose</th></tr>
+      <tr><td>Min Centerline Length</td><td class="val">5.0 m</td><td>0.1–500</td><td>Removes short fragments after extraction</td></tr>
+      <tr><td class="cat">Max Hole Area to Fill</td><td class="val">20.0 m²</td><td>0–500</td><td>Fills vehicle/shadow holes before Voronoi</td></tr>
+      <tr><td class="cat">Prune Factor</td><td class="val">2.0×</td><td>0.5–10</td><td>Branch pruning threshold = factor × median road width</td></tr>
+      <tr><td class="cat">Densify Factor</td><td class="val">5.0×</td><td>1–20</td><td>Boundary sampling interval = factor × cell size</td></tr>
+    </table>
+
+    <h2 style="margin-top:28px">Classification Parameters</h2>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Default</th><th>Range</th><th>Purpose</th></tr>
+      <tr><td>Min Road Area</td><td class="val">2.0 m²</td><td>0.1–10000</td><td>Removes tiny noise fragments</td></tr>
+      <tr><td>Max nDSM Height</td><td class="val">0.5 m</td><td>0–10</td><td>Roads are ground-level — ceiling filter</td></tr>
+      <tr><td>Min Road Length (MBR_L)</td><td class="val">3.0 m</td><td>0.1–500</td><td>Removes short non-road patches</td></tr>
+      <tr><td>Min Road Width (MBR_W)</td><td class="val">1.5 m</td><td>0.1–50</td><td>Removes narrow non-road slivers</td></tr>
+      <tr><td>Majority Filter</td><td class="val">FOUR, 1 pass</td><td>—</td><td>Salt-and-pepper noise removal</td></tr>
+      <tr><td>Simplify Tolerance</td><td class="val">0.15 m</td><td>0.01–5</td><td>Douglas-Peucker boundary smoothing</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+const phases = [
+  {
+    label: "Phase 0 / 9", title: "Classified Raster Input",
+    desc: "Raw single-band raster · 7 classes · ~4.5 cm resolution",
+    state: "input",
+    info: "The classified raster from the DeepLabV3 + PointRend model contains 7 classes: Tree, Building, Road, Vehicle, Grass, Bare Soil, Shadow-Noise. The tool reads unique class values and the user selects the road class (typically 3). The nDSM and optional thermal raster are also loaded."
+  },
+  {
+    label: "Phase 1 / 9", title: "Extract Road Pixels",
+    desc: "Con(VALUE = road_class, 1, 0) → binary raster",
+    state: "extract",
+    info: "A binary raster is created: 1 where the pixel matches the road class value, 0 elsewhere. This isolates all road pixels. The result shows road surfaces as well as any misclassified patches (courtyards, bare ground)."
+  },
+  {
+    label: "Phase 2 / 9", title: "Majority Filter",
+    desc: "FOUR neighborhood · 1 pass → salt-and-pepper removal",
+    state: "filter",
+    info: "MajorityFilter smooths the binary raster. Isolated pixels (salt-and-pepper noise from misclassification) are absorbed into their neighborhood. FOUR-connected is gentle enough to preserve narrow road segments. Statistics are recalculated afterward."
+  },
+  {
+    label: "Phase 3 / 9", title: "Vectorization",
+    desc: "RasterToPolygon · NO_SIMPLIFY · SINGLE_OUTER_PART",
+    state: "vectorize",
+    info: "The filtered binary raster is converted to polygon features. NO_SIMPLIFY preserves exact pixel boundaries (staircase effect). SINGLE_OUTER_PART ensures each disconnected group of pixels becomes its own polygon. Typical result: ~296 raw polygons."
+  },
+  {
+    label: "Phase 4a / 9", title: "Simplify + Dissolve",
+    desc: "POINT_REMOVE (0.15 m) → Dissolve SINGLE_PART → contiguous roads",
+    state: "dissolve",
+    info: "Two steps unique to roads: (1) SimplifyPolygon removes the pixel staircase with Douglas-Peucker at 0.15 m tolerance. (2) Dissolve merges all touching polygons into contiguous road segments while keeping disconnected ones separate. Adjacent fragments become single large features — essential for linear network features."
+  },
+  {
+    label: "Phases 5-6 / 9", title: "Geometry, MBR & Enrichment",
+    desc: "Area, Perimeter, MBR, L/W, Compactness + ZonalStats (nDSM, Thermal)",
+    state: "enrich",
+    info: "Phase 5 computes geometric attributes: Area_m2, Perim_m, MBR_W, MBR_L, MBR_Azim, LW_Ratio, and Polsby-Popper Compactness. Phase 6 enriches with ZonalStatistics: MEAN_nDSM from the nDSM raster and MEAN_Therm from the thermal raster (if provided). A sequential RoadID is assigned."
+  },
+  {
+    label: "Phase 7 / 9", title: "Classification",
+    desc: "Area ≥ 2 m² · nDSM ≤ 0.5 m · MBR_L ≥ 3 m · MBR_W ≥ 1.5 m",
+    state: "classify",
+    info: "Each feature is classified as <code>Road</code> or <code>Rejected possible road</code> with a <code>Reason</code> field. The rejection cascade: (1) Area below min → noise, (2) nDSM above max → elevated structure, (3) MBR_L below min → too short, (4) MBR_W below min → too narrow. Note the inverted nDSM logic vs buildings/trees: roads use a ceiling, not a floor."
+  },
+  {
+    label: "Phase 7.5 / 9", title: "Voronoi Centerline Extraction",
+    desc: "Densify → Voronoi → Interior edges → Graph prune → Linemerge → Smooth",
+    state: "voronoi",
+    info: "For each accepted road polygon: (1) Fill small interior holes (vehicles, shadows) below <code>max_hole_area</code>. (2) Densify the boundary at intervals of <code>densify_factor × cell_size</code>. (3) Compute Voronoi diagram (scipy). (4) Retain only edges fully interior to the polygon — the medial axis. (5) Build a networkx graph and iteratively prune terminal branches shorter than <code>prune_factor × median_width</code>. (6) Merge surviving edges via shapely linemerge. (7) SpatialJoin to inherit parent attributes, filter by min length, and smooth with PAEK."
+  },
+  {
+    label: "Phase 8 / 9", title: "Final Output",
+    desc: "road_results.shp · road_centerlines.shp · road_points.shp · road_log.json",
+    state: "output",
+    info: "All outputs are exported to the <code>roads/</code> subfolder. The polygon shapefile contains all features (accepted + rejected) with Class and Reason fields. The centerline shapefile inherits polygon attributes plus CL_Len_m. The JSON log records all parameters, statistics, and the centerline method used (voronoi or thin)."
+  }
+];
+
+const objects = [
+  {
+    id: "road", name: "Main Road", area: 75.1, mbrL: 20.3, mbrW: 6.5,
+    ndsm: 0.16, therm: 36.6, accepted: true, isRoad: true
+  },
+  {
+    id: "courtyard", name: "Courtyard", area: 4.2, mbrL: 2.8, mbrW: 1.8,
+    ndsm: 0.02, therm: 34.1, accepted: false, reason: "Length_below_min", isRoad: false
+  }
+];
+
+let currentPhase = 0;
+let playing = false;
+
+function buildPhaseBar() {
+  const bar = document.getElementById('phaseBar');
+  bar.innerHTML = phases.map((_, i) =>
+    `<div class="phase-dot" id="pd${i}"></div>`
+  ).join('');
+}
+
+function drawRoad(obj, state) {
+  const vb = "0 0 200 140";
+  let svg = '';
+
+  if (obj.id === 'road') {
+    const jagged = (state === 'vectorize');
+    const dissolved = ['dissolve','enrich','classify','voronoi','output'].includes(state);
+    const showCenterline = (state === 'voronoi' || state === 'output');
+    const showHoles = (state === 'enrich' || state === 'classify');
+    const showVoronoi = (state === 'voronoi');
+
+    // Background terrain
+    svg += `<rect x="0" y="0" width="200" height="140" fill="#2a1f0e" rx="6"/>`;
+    // Trees
+    svg += `<circle cx="25" cy="30" r="14" fill="#365314" opacity="0.7"/>`;
+    svg += `<circle cx="175" cy="25" r="12" fill="#365314" opacity="0.7"/>`;
+    svg += `<circle cx="40" cy="110" r="10" fill="#365314" opacity="0.6"/>`;
+    svg += `<circle cx="165" cy="115" r="13" fill="#365314" opacity="0.7"/>`;
+
+    // Road polygon
+    if (jagged) {
+      svg += `<polygon points="70,0 75,0 75,5 80,5 80,10 85,10 85,15 90,15 90,20 92,20 92,30 90,30 90,40 92,40 92,50 90,50 90,55 88,55 88,60 90,60 90,70 92,70 92,80 90,80 90,85 92,85 92,95 90,95 90,100 88,100 88,110 90,110 90,120 92,120 92,130 90,130 90,140 130,140 130,135 128,135 128,130 125,130 125,120 128,120 128,115 130,115 130,110 128,110 128,100 125,100 125,95 128,95 128,85 130,85 130,80 128,80 128,70 125,70 125,65 128,65 128,55 130,55 130,50 128,50 128,40 125,40 125,35 128,35 128,25 130,25 130,15 128,15 128,10 125,10 125,0" fill="${'#4b5563'}" opacity="0.9"/>`;
+    } else {
+      const roadFill = dissolved ? '#4b5563' : '#4b5563';
+      svg += `<path d="M78,0 Q90,70 88,140 L122,140 Q124,70 118,0 Z" fill="${roadFill}" opacity="0.9"/>`;
+      // Vehicles as holes (yellow)
+      if (showHoles) {
+        svg += `<rect x="90" y="35" width="12" height="7" rx="2" fill="#fbbf24" opacity="0.9"/>`;
+        svg += `<rect x="88" y="75" width="14" height="8" rx="2" fill="#fbbf24" opacity="0.9"/>`;
+        svg += `<rect x="95" y="110" width="11" height="7" rx="2" fill="#fbbf24" opacity="0.9"/>`;
+      }
+    }
+
+    // Centerline
+    if (showCenterline) {
+      svg += `<path d="M98,2 Q99,35 98,70 Q97,105 100,138" fill="none" stroke="#f472b6" stroke-width="2.5" stroke-dasharray="${showVoronoi ? 'none' : '6,3'}" opacity="0.95"/>`;
+      // Voronoi dots
+      if (showVoronoi) {
+        for (let y = 8; y < 135; y += 12) {
+          const x = 98 + Math.sin(y * 0.05) * 2;
+          svg += `<circle cx="${x}" cy="${y}" r="1.5" fill="#f472b6" opacity="0.6"/>`;
+        }
+      }
+    }
+
+    // Border highlight
+    if (['classify','voronoi','output'].includes(state)) {
+      svg += `<path d="M78,0 Q90,70 88,140 L122,140 Q124,70 118,0 Z" fill="none" stroke="#34d399" stroke-width="1.5" opacity="0.6"/>`;
+    }
+  } else {
+    // Courtyard
+    const jagged = (state === 'vectorize');
+    const showReject = ['classify','voronoi','output'].includes(state);
+
+    svg += `<rect x="0" y="0" width="200" height="140" fill="#2a1f0e" rx="6"/>`;
+    // Buildings around
+    svg += `<rect x="10" y="10" width="50" height="45" fill="#991b1b" opacity="0.6" rx="2"/>`;
+    svg += `<rect x="140" y="10" width="50" height="50" fill="#991b1b" opacity="0.6" rx="2"/>`;
+    svg += `<rect x="10" y="85" width="45" height="50" fill="#991b1b" opacity="0.6" rx="2"/>`;
+
+    // Courtyard patch
+    if (jagged) {
+      svg += `<polygon points="75,55 80,55 80,50 85,50 85,55 90,55 90,60 95,60 95,65 100,65 100,70 105,70 105,75 110,75 110,80 115,80 115,85 110,85 110,90 105,90 105,85 100,85 100,80 95,80 95,75 90,75 90,70 85,70 85,65 80,65 80,60 75,60" fill="#4b5563" opacity="0.8"/>`;
+    } else {
+      svg += `<ellipse cx="95" cy="72" rx="22" ry="18" fill="#4b5563" opacity="0.8"/>`;
+    }
+
+    if (showReject) {
+      svg += `<line x1="73" y1="54" x2="117" y2="90" stroke="#f87171" stroke-width="2.5" opacity="0.8"/>`;
+      svg += `<line x1="117" y1="54" x2="73" y2="90" stroke="#f87171" stroke-width="2.5" opacity="0.8"/>`;
+    }
+
+    // Label
+    if (state === 'input' || state === 'extract') {
+      svg += `<text x="95" y="105" text-anchor="middle" fill="#8896b3" font-size="8" font-family="DM Sans">courtyard?</text>`;
+    }
+  }
+
+  return `<svg viewBox="${vb}" class="svg-scene">${svg}</svg>`;
+}
+
+function renderPhase(idx) {
+  currentPhase = idx;
+  const p = phases[idx];
+
+  document.getElementById('phaseLabel').textContent = p.label;
+  document.getElementById('phaseTitle').textContent = p.title;
+  document.getElementById('phaseDesc').textContent = p.desc;
+  document.getElementById('infoText').innerHTML = p.info;
+
+  // Phase bar
+  document.querySelectorAll('.phase-dot').forEach((dot, i) => {
+    dot.className = 'phase-dot';
+    if (i < idx) dot.classList.add('done');
+    if (i === idx) dot.classList.add('active');
+  });
+
+  // Button highlights
+  const btns = document.querySelectorAll('.controls .btn:not(.play)');
+  btns.forEach((btn, i) => {
+    btn.classList.toggle('active', i === idx);
+  });
+
+  const grid = document.getElementById('pixelGrid');
+  let html = '';
+
+  // Show objects based on state
+  const showBoth = ['input','extract','filter','vectorize','dissolve','enrich'].includes(p.state);
+  const visibleObjs = showBoth ? objects :
+    (p.state === 'classify' || p.state === 'voronoi' || p.state === 'output') ? objects : objects;
+
+  visibleObjs.forEach((obj, i) => {
+    let cardClass = 'obj-card';
+    if (p.state === 'classify' || p.state === 'voronoi' || p.state === 'output') {
+      cardClass += obj.accepted ? ' accepted' : ' rejected';
+    }
+
+    let stats = '';
+    if (['enrich','classify','voronoi','output'].includes(p.state)) {
+      stats += `Area: ${obj.area} m²<br>`;
+      stats += `MBR: ${obj.mbrL}×${obj.mbrW} m<br>`;
+      stats += `nDSM: ${obj.ndsm} m<br>`;
+      stats += `Therm: ${obj.therm}°C`;
+    } else if (p.state === 'dissolve') {
+      stats += `Area: ${obj.area} m²<br>`;
+      stats += `MBR: ${obj.mbrL}×${obj.mbrW} m`;
+    }
+
+    let badge = '';
+    if (['classify','voronoi','output'].includes(p.state)) {
+      if (obj.accepted) {
+        badge = `<div class="obj-badge show" style="background:var(--green)">✓ Road</div>`;
+      } else {
+        badge = `<div class="obj-badge show" style="background:var(--red)">${obj.reason}</div>`;
+      }
+    }
+
+    html += `
+      <div class="${cardClass}" style="animation-delay: ${i * 0.12}s">
+        <div class="obj-visual">
+          ${drawRoad(obj, p.state)}
+        </div>
+        <div class="obj-name">${obj.name}</div>
+        <div class="obj-stats">${stats}</div>
+        ${badge}
+      </div>
+    `;
+  });
+
+  // Output phase extra card
+  if (p.state === 'output') {
+    html += `
+      <div class="obj-card" style="animation-delay: 0.3s; width: 220px;">
+        <div style="padding: 20px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border);">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--road-color); margin-bottom: 10px;">OUTPUT FILES</div>
+          <div style="font-size: 0.82rem; line-height: 2; color: var(--text-dim);">
+            📄 road_results.shp<br>
+            🛣️ road_centerlines.shp<br>
+            📍 road_points.shp<br>
+            📋 road_log.json
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Voronoi phase extra card
+  if (p.state === 'voronoi') {
+    html += `
+      <div class="obj-card" style="animation-delay: 0.3s; width: 220px;">
+        <div style="padding: 16px; background: var(--surface2); border-radius: 10px; border: 1px solid rgba(244,114,182,0.3);">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--centerline); margin-bottom: 10px;">VORONOI PIPELINE</div>
+          <div style="font-size: 0.78rem; line-height: 2; color: var(--text-dim);">
+            <span style="color:var(--green)">①</span> Fill holes ≤ 20 m²<br>
+            <span style="color:var(--green)">②</span> Densify boundary<br>
+            <span style="color:var(--green)">③</span> scipy.Voronoi<br>
+            <span style="color:var(--green)">④</span> Interior edges only<br>
+            <span style="color:var(--green)">⑤</span> Graph prune (nx)<br>
+            <span style="color:var(--green)">⑥</span> linemerge + PAEK
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  grid.innerHTML = html;
+}
+
+function goPhase(n) {
+  playing = false;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Play Animation';
+  renderPhase(n);
+}
+
+async function playAll() {
+  if (playing) {
+    playing = false;
+    document.getElementById('btnPlay').innerHTML = '&#9654; Play Animation';
+    return;
+  }
+  playing = true;
+  document.getElementById('btnPlay').innerHTML = '&#9632; Stop';
+
+  for (let i = 0; i < phases.length; i++) {
+    if (!playing) break;
+    renderPhase(i);
+    await new Promise(r => setTimeout(r, i === 0 ? 1500 : 2400));
+  }
+  playing = false;
+  document.getElementById('btnPlay').innerHTML = '&#9654; Replay';
+}
+
+buildPhaseBar();
+renderPhase(0);
+</script>
+</body>
+</html>

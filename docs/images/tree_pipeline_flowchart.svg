@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" font-family="'Segoe UI','Helvetica Neue',sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .box { fill: #f0fdf4; stroke: #16a34a; stroke-width: 0.8; }
+    .box-opt { fill: #ecfeff; stroke: #0891b2; stroke-width: 0.8; stroke-dasharray: 5 3; }
+    .box-common { fill: #f8fafc; stroke: #94a3b8; stroke-width: 0.8; }
+    .box-reject { fill: #fef2f2; stroke: #ef4444; stroke-width: 0.8; }
+    .title { font-size: 13px; font-weight: 600; fill: #064e3b; }
+    .title-c { font-size: 13px; font-weight: 600; fill: #334155; }
+    .title-o { font-size: 13px; font-weight: 600; fill: #164e63; }
+    .sub { font-size: 10.5px; fill: #6b7280; }
+    .sub-o { font-size: 10.5px; fill: #0e7490; }
+    .lbl { font-size: 9px; fill: #9ca3af; font-style: italic; }
+    .phase { font-size: 9.5px; fill: #16a34a; font-weight: 700; letter-spacing: 0.5px; }
+    .phase-c { font-size: 9.5px; fill: #64748b; font-weight: 700; letter-spacing: 0.5px; }
+    .phase-o { font-size: 9.5px; fill: #0891b2; font-weight: 700; letter-spacing: 0.5px; }
+    .arr-line { stroke: #94a3b8; stroke-width: 1.2; marker-end: url(#arr); fill: none; }
+    .arr-opt  { stroke: #0891b2; stroke-width: 1.2; marker-end: url(#arr); fill: none; stroke-dasharray: 5 3; }
+  </style>
+
+  <!-- Header -->
+  <rect x="250" y="10" width="460" height="44" rx="10" fill="url(#hdr)" opacity="0.9"/>
+  <text x="480" y="30" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">Tree Analysis Pipeline</text>
+  <text x="480" y="46" text-anchor="middle" font-size="10" fill="#d1fae5">PostProcessing.pyt  ·  _tree_core.py  ·  _postproc_common.py</text>
+
+  <!-- Phase 0: Validate -->
+  <rect class="box-common" x="350" y="70" width="260" height="42" rx="6"/>
+  <text class="phase-c" x="366" y="86">PHASE 0</text>
+  <text class="title-c" x="426" y="86">Validate inputs</text>
+  <text class="sub" x="366" y="101">CRS, cell size, AOI, nDSM extent check</text>
+  <line class="arr-line" x1="480" y1="112" x2="480" y2="130"/>
+
+  <!-- Phase 1: Extract -->
+  <rect class="box-common" x="350" y="130" width="260" height="42" rx="6"/>
+  <text class="phase-c" x="366" y="146">PHASE 1</text>
+  <text class="title-c" x="426" y="146">Extract tree pixels</text>
+  <text class="sub" x="366" y="161">Con(VALUE = tree_class, 1, 0) → binary</text>
+  <line class="arr-line" x1="480" y1="172" x2="480" y2="190"/>
+
+  <!-- Phase 2: Majority -->
+  <rect class="box-common" x="350" y="190" width="260" height="42" rx="6"/>
+  <text class="phase-c" x="366" y="206">PHASE 2</text>
+  <text class="title-c" x="426" y="206">Majority filter</text>
+  <text class="sub" x="366" y="221">FOUR/EIGHT neighborhood · N passes</text>
+  <line class="arr-line" x1="480" y1="232" x2="480" y2="250"/>
+
+  <!-- Phase 3: Vectorize -->
+  <rect class="box-common" x="350" y="250" width="260" height="42" rx="6"/>
+  <text class="phase-c" x="366" y="266">PHASE 3</text>
+  <text class="title-c" x="426" y="266">Vectorize</text>
+  <text class="sub" x="366" y="281">RasterToPolygon · SINGLE_OUTER_PART</text>
+  <line class="arr-line" x1="480" y1="292" x2="480" y2="310"/>
+
+  <!-- Phase 4: Smooth (TREE-SPECIFIC) -->
+  <rect class="box" x="340" y="310" width="280" height="46" rx="8"/>
+  <text class="phase" x="358" y="328">PHASE 4</text>
+  <text class="title" x="418" y="328">SmoothPolygon (PAEK)</text>
+  <text class="sub" x="358" y="344">Organic crown shapes · tolerance (m)</text>
+  <line class="arr-line" x1="480" y1="356" x2="480" y2="380"/>
+
+  <!-- Decision diamond for crown separation -->
+  <polygon points="480,380 560,410 480,440 400,410" fill="#f0fdf4" stroke="#16a34a" stroke-width="0.8"/>
+  <text x="480" y="413" text-anchor="middle" font-size="10.5" font-weight="600" fill="#064e3b">Crown sep?</text>
+
+  <!-- None path (straight down) -->
+  <line class="arr-line" x1="480" y1="440" x2="480" y2="490"/>
+  <text class="lbl" x="488" y="468">None</text>
+
+  <!-- Watershed path (left) -->
+  <path class="arr-opt" d="M400,410 L200,410 L200,490"/>
+  <text class="lbl" x="280" y="404">Watershed</text>
+
+  <!-- Grid path (right) -->
+  <path class="arr-opt" d="M560,410 L760,410 L760,490"/>
+  <text class="lbl" x="640" y="404">Grid</text>
+
+  <!-- Watershed box -->
+  <rect class="box-opt" x="80" y="490" width="240" height="76" rx="8"/>
+  <text class="phase-o" x="98" y="508">PHASE 4.5 · WATERSHED</text>
+  <text class="title-o" x="98" y="524">Crown delineation (ITCD)</text>
+  <text class="sub-o" x="98" y="539">Only polygons > min area (120 m²)</text>
+  <text class="sub-o" x="98" y="552">3+ peaks → split · prominence ≥ 2 m</text>
+
+  <!-- Grid box -->
+  <rect class="box-opt" x="640" y="490" width="240" height="56" rx="8"/>
+  <text class="phase-o" x="658" y="508">PHASE 4.5 · GRID</text>
+  <text class="title-o" x="658" y="524">Fishnet overlay</text>
+  <text class="sub-o" x="658" y="539">Intersect with regular grid cells</text>
+
+  <!-- Converge arrows -->
+  <path class="arr-line" d="M200,566 L200,596 L470,596"/>
+  <path class="arr-line" d="M760,546 L760,596 L490,596"/>
+  <line class="arr-line" x1="480" y1="490" x2="480" y2="605"/>
+
+  <!-- Phase 5: Geometry -->
+  <rect class="box-common" x="350" y="605" width="260" height="32" rx="6"/>
+  <text class="phase-c" x="366" y="626">PHASE 5</text>
+  <text class="title-c" x="426" y="626">Geometry + MBR</text>
+  <line class="arr-line" x1="480" y1="637" x2="480" y2="647"/>
+
+  <!-- Phase 6: Enrich -->
+  <rect class="box-common" x="350" y="647" width="260" height="32" rx="6"/>
+  <text class="phase-c" x="366" y="668">PHASE 6</text>
+  <text class="title-c" x="426" y="668">Enrich (nDSM + Thermal)</text>
+  <line class="arr-line" x1="480" y1="679" x2="480" y2="689"/>
+
+  <!-- Phase 7: Classify (TREE-SPECIFIC) -->
+  <rect class="box" x="290" y="689" width="190" height="28" rx="6"/>
+  <text class="phase" x="306" y="708">PHASE 7</text>
+  <text class="title" x="366" y="708">Tree ✓</text>
+
+  <rect class="box-reject" x="500" y="689" width="190" height="28" rx="6"/>
+  <text x="516" y="708" font-size="13" font-weight="600" fill="#b91c1c">Rejected ✗</text>
+  <text x="618" y="708" font-size="9.5" fill="#ef4444">area / nDSM</text>
+
+  <!-- Export -->
+  <line class="arr-line" x1="385" y1="717" x2="385" y2="717"/>
+
+  <!-- Legend -->
+  <rect x="30" y="660" width="14" height="14" rx="3" fill="#f0fdf4" stroke="#16a34a" stroke-width="0.8"/>
+  <text x="50" y="672" font-size="10" fill="#6b7280">Tree-specific (_tree_core.py)</text>
+  <rect x="30" y="680" width="14" height="14" rx="3" fill="#f8fafc" stroke="#94a3b8" stroke-width="0.8"/>
+  <text x="50" y="692" font-size="10" fill="#6b7280">Common (_postproc_common.py)</text>
+  <rect x="30" y="700" width="14" height="14" rx="3" fill="#ecfeff" stroke="#0891b2" stroke-width="0.8" stroke-dasharray="5 3"/>
+  <text x="50" y="712" font-size="10" fill="#6b7280">Optional (mutually exclusive)</text>
+</svg>
