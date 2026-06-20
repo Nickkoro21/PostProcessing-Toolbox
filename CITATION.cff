@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "PostProcessing Toolbox: Land-Cover Post-Processing for Semantic Segmentation in ArcGIS Pro"
+abstract: "Modular ArcGIS Python Toolbox (.pyt) that converts pixel-level land-cover classification rasters into clean, attributed vector features (Vehicle, Building, Tree, Road), with a shared raster-to-vector pipeline and class-specific refinement (regularization, Voronoi centerlines, nDSM/thermal enrichment). MSc thesis deliverable, University of the Aegean (Department of Geography, RSGIS Lab), Mytilene, Greece, 2026; supervised by Dr. Christos Vasilakos."
+type: software
+authors:
+  - family-names: Koroniadis
+    given-names: Nikolaos
+    affiliation: "University of the Aegean, Department of Geography, RSGIS Lab"
+version: "1.0.0"
+date-released: "2026-06-20"
+license: MIT
+repository-code: "https://github.com/Nickkoro21/PostProcessing-Toolbox"
+url: "https://github.com/Nickkoro21/PostProcessing-Toolbox"
+keywords:
+  - ArcGIS Python Toolbox
+  - raster-to-vector
+  - building regularization
+  - Voronoi centerline
+  - nDSM
+  - semantic segmentation
+  - MicaSense Altum-PT
+  - DeepLabV3
+  - PointRend
