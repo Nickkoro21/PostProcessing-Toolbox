@@ -9,7 +9,7 @@ authors:
     affiliation: "University of the Aegean, Department of Geography, RSGIS Lab"
 version: "1.0.0"
 date-released: "2026-06-20"
-license: MIT
+license: AGPL-3.0-or-later
 repository-code: "https://github.com/Nickkoro21/PostProcessing-Toolbox"
 url: "https://github.com/Nickkoro21/PostProcessing-Toolbox"
 keywords:
