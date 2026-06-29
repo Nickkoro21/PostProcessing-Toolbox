@@ -1,8 +1,8 @@
-# PostProcessing Toolbox
+﻿# PostProcessing Toolbox
 
 **Land cover post-processing suite for semantic segmentation outputs in ArcGIS Pro**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![ArcGIS Pro](https://img.shields.io/badge/ArcGIS_Pro-3.6+-0079C1.svg)](https://www.esri.com/en-us/arcgis/products/arcgis-pro)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://www.python.org/)
 
@@ -253,4 +253,5 @@ University of the Aegean
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-or-later) — see the [LICENSE](LICENSE) file for details.
+
